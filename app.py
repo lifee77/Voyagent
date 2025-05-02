@@ -1,0 +1,129 @@
+import os
+import logging
+import json
+from flask import Flask, request, jsonify
+from pyngrok import ngrok
+from dotenv import load_dotenv
+import requests
+import threading
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Telegram Bot API token
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_API = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}'
+
+# Import agent handler
+from Voyagent.agent_runner import process_message
+
+@app.route('/', methods=['GET'])
+def index():
+    return "Telegram Trip Assistant Bot is running!"
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.get_json()
+    logger.info(f"Received update: {json.dumps(data, indent=2)}")
+    
+    # Check if this is a message or command
+    if 'message' in data:
+        chat_id = data['message']['chat']['id']
+        
+        # Send typing action to let user know we're processing
+        send_chat_action(chat_id, 'typing')
+        
+        # Check if it's a command
+        if 'text' in data['message']:
+            message_text = data['message']['text']
+            user_info = {
+                'id': data['message']['from']['id'],
+                'first_name': data['message']['from'].get('first_name', ''),
+                'username': data['message']['from'].get('username', '')
+            }
+            
+            if message_text.startswith('/start'):
+                send_message(chat_id, "Welcome to Trip-Assistant! 🌍✈️\n\nI can help you plan your trips. Ask me about flights, things to do, or places to visit. When you're ready for a summary of your trip, just type /summary.")
+                return jsonify({"status": "ok"})
+            
+            elif message_text.startswith('/summary'):
+                # Process summary request in a separate thread
+                threading.Thread(target=handle_summary_request, args=(chat_id, user_info)).start()
+                return jsonify({"status": "ok"})
+            
+            else:
+                # Process regular message in a separate thread
+                threading.Thread(target=handle_message, args=(chat_id, message_text, user_info)).start()
+                return jsonify({"status": "ok"})
+    
+    return jsonify({"status": "ok"})
+
+def handle_message(chat_id, message_text, user_info):
+    try:
+        # Process message with agent
+        response = process_message(message_text, user_info)
+        send_message(chat_id, response)
+    except Exception as e:
+        logger.error(f"Error processing message: {e}")
+        send_message(chat_id, "I encountered an error while processing your request. Please try again.")
+
+def handle_summary_request(chat_id, user_info):
+    try:
+        # Get summary from agent
+        from Voyagent.summary_generator import generate_summary
+        summary = generate_summary(user_info['id'])
+        send_message(chat_id, summary)
+    except Exception as e:
+        logger.error(f"Error generating summary: {e}")
+        send_message(chat_id, "I couldn't generate your trip summary. Please try asking a few questions about your destination first.")
+
+def send_message(chat_id, text):
+    url = f"{TELEGRAM_API}/sendMessage"
+    payload = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': 'Markdown'
+    }
+    requests.post(url, json=payload)
+
+def send_chat_action(chat_id, action):
+    """Send chat action like typing, upload_photo, etc."""
+    url = f"{TELEGRAM_API}/sendChatAction"
+    payload = {
+        'chat_id': chat_id,
+        'action': action
+    }
+    requests.post(url, json=payload)
+
+def setup_webhook(ngrok_url):
+    """Set up the Telegram webhook"""
+    webhook_url = f"{ngrok_url}/webhook"
+    url = f"{TELEGRAM_API}/setWebhook?url={webhook_url}"
+    response = requests.get(url)
+    logger.info(f"Webhook set: {response.json()}")
+    return response.json()
+
+if __name__ == '__main__':
+    # Get port from environment or default to 5000
+    port = int(os.getenv('PORT', 5000))
+    
+    # Start ngrok tunnel
+    public_url = ngrok.connect(port).public_url
+    logger.info(f"Public URL: {public_url}")
+    
+    # Setup webhook
+    webhook_response = setup_webhook(public_url)
+    logger.info(f"Webhook response: {webhook_response}")
+    
+    # Start Flask app
+    app.run(host='0.0.0.0', port=port)

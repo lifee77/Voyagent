@@ -1,0 +1,8 @@
+flask==2.3.3
+python-telegram-bot==20.7
+python-dotenv==1.0.0
+requests==2.31.0
+langchain==0.0.267
+langchain-openai==0.0.2
+pyngrok==7.0.0
+jsonschema==4.19.1
