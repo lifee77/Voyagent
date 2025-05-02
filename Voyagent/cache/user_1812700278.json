@@ -1,0 +1,39 @@
+{
+  "user_id": 1812700278,
+  "last_updated": "2025-05-02T14:25:49.581652",
+  "trip_details": {
+    "destinations": [],
+    "dates": {},
+    "flights": [],
+    "accommodations": [],
+    "activities": [],
+    "reservations": [],
+    "notes": []
+  },
+  "queries": [
+    {
+      "timestamp": "2025-05-02T14:20:23.435158",
+      "query": "Yosemite",
+      "response": "I'm sorry, I'm having trouble accessing information about Yosemite right now.  The database I use to find points of interest seems to be down.  \n\nTo help you plan your Yosemite trip, I can still offer some general advice.  Yosemite is a beautiful national park, and planning ahead is key, especially regarding accommodation as it can book up quickly.  \n\nTo get started, could you tell me:\n\n* **When** you'd like to visit? (This will help me check for availability if I can access the database again later.)\n* **How long** you plan to stay?\n* **What kind of activities** you're interested in (hiking, camping, sightseeing, etc.)?\n* **Where you'll be traveling from**? (This will help me suggest transportation options once I can access the relevant tools.)\n\nOnce I have this information, I can give you more specific recommendations.",
+      "tool_calls": [
+        {
+          "tool": "apify_poi",
+          "input": "Yosemite",
+          "output": "Error searching for points of interest: 404 Client Error: Not Found for url: https://api.apify.com/v2/acts/apify/tripadvisor/runs?token=apify_api_L6RiiqAiU3kkU2JjkXgGi6gUvPoeCe3qOr2G"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-05-02T14:25:49.581636",
+      "query": "Yosemite",
+      "response": "I'm sorry, I'm having trouble accessing information about Yosemite right now.  The database I use to find points of interest seems to be down.  \n\nTo help you plan your Yosemite trip, I can still offer some general advice.  Yosemite is a beautiful national park, and planning ahead is key, especially regarding accommodation as it can book up quickly.  \n\nTo get started, could you tell me:\n\n* **When** you'd like to visit? (This will help me check for availability if I can access the database again later)\n* **How long** you plan to stay?\n* **What kind of activities** you're interested in (hiking, camping, sightseeing, etc.)?\n* **Where you'll be traveling from**? (This will help me suggest transportation options once I can access the relevant tools.)\n\nOnce I have this information, I can give you more specific recommendations.",
+      "tool_calls": [
+        {
+          "tool": "apify_poi",
+          "input": "Yosemite",
+          "output": "Error searching for points of interest: 404 Client Error: Not Found for url: https://api.apify.com/v2/acts/apify/tripadvisor/runs?token=apify_api_L6RiiqAiU3kkU2JjkXgGi6gUvPoeCe3qOr2G"
+        }
+      ]
+    }
+  ]
+}

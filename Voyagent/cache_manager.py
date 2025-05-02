@@ -47,9 +47,24 @@ def save_to_cache(user_id, query, result):
     
     # Extract information from tool calls
     for step in result.get("intermediate_steps", []):
-        tool_name = step[0].tool
-        tool_input = step[0].tool_input
-        tool_output = step[1]
+        # Handle both the old format (tuple with LangChain Tool objects) and the new dictionary format
+        if isinstance(step, dict):
+            # New format from Gemini preprocessor
+            tool_name = step.get("tool_name", "unknown_tool")
+            tool_input = step.get("tool_input", "")
+            tool_output = step.get("tool_output", "")
+        elif isinstance(step, (list, tuple)) and len(step) >= 2:
+            # Old format [tool_obj, output]
+            try:
+                tool_name = step[0].tool
+                tool_input = step[0].tool_input
+                tool_output = step[1]
+            except (AttributeError, IndexError):
+                logger.error(f"Unexpected step format in intermediate_steps: {step}")
+                continue
+        else:
+            logger.error(f"Unknown step format in intermediate_steps: {step}")
+            continue
         
         tool_calls.append({
             "tool": tool_name,
@@ -62,9 +77,11 @@ def save_to_cache(user_id, query, result):
             _extract_flight_info(cache_data, tool_output)
         elif tool_name == "apify_poi":
             _extract_poi_info(cache_data, tool_output)
+        elif tool_name == "apify_google_maps":
+            _extract_directions_info(cache_data, tool_input, tool_output)
         elif tool_name == "perplexity_search":
             _extract_destination_info(cache_data, query, tool_output)
-        elif tool_name == "vapi_reservation":  # Changed from rime_reservation to vapi_reservation
+        elif tool_name == "vapi_reservation":
             _extract_reservation_info(cache_data, tool_input, tool_output)
     
     # Add this query to the history
@@ -264,6 +281,55 @@ def _extract_reservation_info(cache_data, tool_input, tool_output):
         
     except Exception as e:
         logger.error(f"Error extracting reservation info: {e}")
+
+def _extract_directions_info(cache_data, tool_input, tool_output):
+    """Extract directions information from Google Maps tool output"""
+    try:
+        # Add origin and destination to destinations list if not already there
+        if "from" in tool_input.lower() and "to" in tool_input.lower():
+            parts = tool_input.lower().split("from")
+            if len(parts) > 1:
+                direction_parts = parts[1].split("to")
+                if len(direction_parts) > 1:
+                    origin = direction_parts[0].strip().title()
+                    destination = direction_parts[1].strip().title()
+                    
+                    if origin and origin not in cache_data["trip_details"]["destinations"]:
+                        cache_data["trip_details"]["destinations"].append(origin)
+                    
+                    if destination and destination not in cache_data["trip_details"]["destinations"]:
+                        cache_data["trip_details"]["destinations"].append(destination)
+                    
+                    # Add a note about the directions query
+                    note = f"Requested directions from {origin} to {destination}"
+                    if note not in cache_data["trip_details"]["notes"]:
+                        cache_data["trip_details"]["notes"].append(note)
+        
+        # Try to extract structured data if available
+        if isinstance(tool_output, str) and tool_output.strip():
+            try:
+                directions_data = json.loads(tool_output)
+                if directions_data and isinstance(directions_data, list) and len(directions_data) > 0:
+                    # Store transportation info if available
+                    direction_item = directions_data[0]
+                    if isinstance(direction_item, dict):
+                        if "directionsLegs" in direction_item:
+                            legs = direction_item["directionsLegs"]
+                            if legs and isinstance(legs, list) and len(legs) > 0:
+                                for leg in legs:
+                                    transportation_note = (
+                                        f"Travel from {leg.get('startAddress', 'origin')} "
+                                        f"to {leg.get('endAddress', 'destination')} - "
+                                        f"Distance: {leg.get('distance', {}).get('text', 'unknown')}, "
+                                        f"Duration: {leg.get('duration', {}).get('text', 'unknown')}"
+                                    )
+                                    if transportation_note not in cache_data["trip_details"]["notes"]:
+                                        cache_data["trip_details"]["notes"].append(transportation_note)
+            except (json.JSONDecodeError, AttributeError, KeyError, IndexError) as e:
+                logger.debug(f"Could not extract structured directions data: {e}")
+    
+    except Exception as e:
+        logger.error(f"Error extracting directions info: {e}", exc_info=True)
 
 def clear_cache(user_id=None):
     """Clear cache for a user or all users"""

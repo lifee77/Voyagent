@@ -6,6 +6,7 @@ from pyngrok import ngrok
 from dotenv import load_dotenv
 import requests
 import threading
+import asyncio
 
 # Load environment variables
 load_dotenv()
@@ -28,8 +29,62 @@ if not TELEGRAM_TOKEN:
     
 TELEGRAM_API = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}'
 
-# Import agent handler
-from Voyagent.agent_runner import process_message
+# Define telegram message functions first before importing agent_runner
+def send_message(chat_id, text, parse_mode='Markdown'):
+    url = f"{TELEGRAM_API}/sendMessage"
+    payload = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': parse_mode
+    }
+    response = requests.post(url, json=payload)
+    if not response.ok:
+        logger.error(f"Failed to send message: {response.text}")
+    return response.json() if response.ok else None
+
+def send_telegram_message(user_id, text, message_id=None, parse_mode='Markdown'):
+    """Send or edit a telegram message and return the response.
+    This function is registered as a callback for the thought process updates."""
+    url = f"{TELEGRAM_API}/{'editMessageText' if message_id else 'sendMessage'}"
+    payload = {
+        'chat_id': user_id,
+        'text': text,
+        'parse_mode': parse_mode
+    }
+    
+    # Add message_id for editing existing messages
+    if message_id:
+        payload['message_id'] = message_id
+    
+    try:
+        response = requests.post(url, json=payload)
+        if not response.ok:
+            logger.error(f"Failed to {'edit' if message_id else 'send'} message: {response.text}")
+            # If editing fails (e.g., no changes in content), try sending a new message
+            if message_id:
+                return send_telegram_message(user_id, text, None, parse_mode)
+        return response.json() if response.ok else None
+    except Exception as e:
+        logger.error(f"Error in send_telegram_message: {e}")
+        return None
+
+def send_chat_action(chat_id, action):
+    """Send chat action like typing, upload_photo, etc."""
+    url = f"{TELEGRAM_API}/sendChatAction"
+    payload = {
+        'chat_id': chat_id,
+        'action': action
+    }
+    response = requests.post(url, json=payload)
+    if not response.ok:
+        logger.error(f"Failed to send chat action: {response.text}")
+    return response
+
+# Now import agent handler after defining the telegram functions
+from Voyagent.agent_runner import process_message, register_telegram_callback
+
+# Register the Telegram callback function for sending thought process updates
+register_telegram_callback(send_telegram_message)
 
 @app.route('/', methods=['GET'])
 def index():
@@ -109,30 +164,6 @@ def handle_summary_request(chat_id, user_info):
         logger.error(f"Error generating summary: {e}")
         send_message(chat_id, "I couldn't generate your trip summary. Please try asking a few questions about your destination first.")
 
-def send_message(chat_id, text):
-    url = f"{TELEGRAM_API}/sendMessage"
-    payload = {
-        'chat_id': chat_id,
-        'text': text,
-        'parse_mode': 'Markdown'
-    }
-    response = requests.post(url, json=payload)
-    if not response.ok:
-        logger.error(f"Failed to send message: {response.text}")
-    return response
-
-def send_chat_action(chat_id, action):
-    """Send chat action like typing, upload_photo, etc."""
-    url = f"{TELEGRAM_API}/sendChatAction"
-    payload = {
-        'chat_id': chat_id,
-        'action': action
-    }
-    response = requests.post(url, json=payload)
-    if not response.ok:
-        logger.error(f"Failed to send chat action: {response.text}")
-    return response
-
 def setup_webhook(ngrok_url):
     """Set up the Telegram webhook"""
     webhook_url = f"{ngrok_url}/webhook"
@@ -147,7 +178,15 @@ def setup_webhook(ngrok_url):
     logger.info(f"Webhook set: {response.json()}")
     return response.json()
 
+# Set up asyncio event loop for the main thread
+def setup_asyncio_event_loop():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 if __name__ == '__main__':
+    # Set up asyncio event loop for the main thread
+    setup_asyncio_event_loop()
+    
     # Get port from environment or default to 8080 (instead of 5000 to avoid AirPlay conflicts on macOS)
     port = int(os.getenv('PORT', 8080))
     

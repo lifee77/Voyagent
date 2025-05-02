@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+import time
+import asyncio
 from dotenv import load_dotenv
 # Import the correct modules
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -80,11 +82,50 @@ tools = [
 # Dictionary to store user chat history and context
 user_sessions = {}
 
+# Callback functions for handling telegram updates
+telegram_callbacks = {}
+
 def get_tool_by_name(tool_name):
     """Get a tool instance by its name."""
     for tool in tools:
         if tool.name == tool_name:
             return tool
+    return None
+
+def register_telegram_callback(callback_func):
+    """Register a callback function to send updates to Telegram."""
+    telegram_callbacks["send_message"] = callback_func
+    logger.info("Registered Telegram callback function")
+
+def update_thought_process(user_id, thought, replace=False):
+    """Send thought process updates to Telegram."""
+    if "send_message" in telegram_callbacks:
+        try:
+            # Prefix the thought to make it clear it's the internal thought process
+            formatted_thought = f"🧠 *Thought Process*: {thought}"
+            
+            # Get existing thought message ID for this user if it exists
+            message_id = None
+            if user_id in user_sessions and "thought_message_id" in user_sessions[user_id]:
+                message_id = user_sessions[user_id]["thought_message_id"]
+                
+            # Send via the callback
+            result = telegram_callbacks["send_message"](
+                user_id, 
+                formatted_thought, 
+                message_id=message_id if replace else None,
+                parse_mode="Markdown"
+            )
+            
+            # If this is a new thought message, store its ID
+            if replace and result and "message_id" in result:
+                if user_id in user_sessions:
+                    user_sessions[user_id]["thought_message_id"] = result["message_id"]
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error sending thought process to Telegram: {e}")
+            return None
     return None
 
 def process_message(message, user_info):
@@ -95,55 +136,77 @@ def process_message(message, user_info):
     if user_id not in user_sessions:
         user_sessions[user_id] = {
             "chat_history": [],
-            "trip_info": {}
+            "trip_info": {},
+            "thought_message_id": None
         }
     
     # Execute conversation
     logger.info(f"Processing message from User {user_id}: {message}")
     try:
+        # Start thought process display
+        update_thought_process(user_id, "Starting to process your query...", replace=True)
+        
         # Step 1: Preprocess the query with Gemini
+        update_thought_process(user_id, "Analyzing your query with Gemini to understand your travel needs...", replace=True)
         structured_query = preprocessor.preprocess_query(message)
         query_type = structured_query.get("query_type", "general")
         
         logger.info(f"Preprocessed query type: {query_type}")
+        update_thought_process(
+            user_id, 
+            f"I've identified this as a *{query_type}* query.\n"
+            f"Origin: {structured_query.get('origin', 'Not specified')}\n"
+            f"Destination: {structured_query.get('destination', 'Not specified')}\n"
+            f"Date: {structured_query.get('date_info', {}).get('start_date', 'Not specified')}",
+            replace=True
+        )
         
         # Step 2: Select the appropriate tool based on the structured query
         tool_to_use = None
         
         if query_type == "flight":
             tool_to_use = get_tool_by_name("apify_flight")
+            update_thought_process(user_id, "Looking for flight information using Skyscanner...", replace=True)
             # Use preprocessed data for better tool input
             origin, destination, date = preprocessor.extract_travel_info(message)
             if origin and destination:
                 message = f"from: {origin}, to: {destination}" + (f", date: {date}" if date else "")
                 logger.info(f"Structured flight query: {message}")
+                update_thought_process(user_id, f"Searching for flights from {origin} to {destination}" + (f" on {date}" if date else ""), replace=True)
                 
         elif query_type == "poi" or query_type == "recommendations":
             tool_to_use = get_tool_by_name("apify_poi")
+            update_thought_process(user_id, "Looking for attractions and points of interest...", replace=True)
             # Use the destination for POI search
             if structured_query.get("destination"):
                 message = structured_query.get("destination")
                 logger.info(f"Structured POI query: {message}")
+                update_thought_process(user_id, f"Finding attractions and things to do in {message}...", replace=True)
                 
         elif query_type == "directions":
             tool_to_use = get_tool_by_name("apify_google_maps")
+            update_thought_process(user_id, "Looking for directions and transportation options...", replace=True)
             # Format as directions query
             origin = structured_query.get("origin", "")
             destination = structured_query.get("destination", "")
             if origin and destination:
                 message = f"directions from {origin} to {destination}"
                 logger.info(f"Structured directions query: {message}")
+                update_thought_process(user_id, f"Finding directions from {origin} to {destination}...", replace=True)
                 
         # Check for other specific tool needs
         if "translate" in message.lower() or any(lang in message.lower() for lang in ["spanish", "french", "german", "japanese"]):
             tool_to_use = get_tool_by_name("deepl_translate")
+            update_thought_process(user_id, "Preparing to translate content...", replace=True)
         
         elif any(term in message.lower() for term in ["book", "reserve", "reservation", "call"]):
             tool_to_use = get_tool_by_name("vapi_reservation")
+            update_thought_process(user_id, "Preparing to help you make a reservation...", replace=True)
         
         # Fallback to Perplexity for general queries
         if not tool_to_use and query_type == "general":
             tool_to_use = get_tool_by_name("perplexity_search")
+            update_thought_process(user_id, "Searching for general travel information...", replace=True)
             # Use the optimized query if available
             if "structured_query" in structured_query:
                 message = structured_query.get("structured_query")
@@ -154,6 +217,7 @@ def process_message(message, user_info):
             
             # Special handling for reservation tool
             if tool_to_use.name == "vapi_reservation":
+                update_thought_process(user_id, "Structuring your reservation details...", replace=True)
                 prompt = f"""Based on this request: "{message}"
                 
                 Create a JSON structure for making a reservation with these fields:
@@ -178,6 +242,7 @@ def process_message(message, user_info):
                     json_end = structured_input.rfind("}") + 1
                     if json_start >= 0 and json_end > 0:
                         json_str = structured_input[json_start:json_end]
+                        update_thought_process(user_id, f"Making the reservation call with these details: {json_str}", replace=True)
                         tool_response = tool_to_use._run(json_str)
                     else:
                         tool_response = "I couldn't process your reservation request. Could you provide more details about what you'd like to book?"
@@ -186,10 +251,31 @@ def process_message(message, user_info):
                     tool_response = "I encountered an error processing your reservation. Please try again with more details."
             else:
                 # For other tools, pass the processed message
+                update_thought_process(user_id, f"Using {tool_to_use.name} to get information based on your query...", replace=True)
+                start_time = time.time()
                 tool_response = tool_to_use._run(message)
+                duration = time.time() - start_time
+                update_thought_process(
+                    user_id, 
+                    f"Got response from {tool_to_use.name} in {duration:.1f} seconds. Now analyzing the information...",
+                    replace=True
+                )
+            
+            # Check for failed tool runs and try fallback strategies
+            if "Error" in tool_response and tool_to_use.name == "apify_google_maps":
+                update_thought_process(
+                    user_id,
+                    "The directions search failed. Switching to a general information search about transportation options...",
+                    replace=True
+                )
+                # Fallback to Perplexity for transportation info
+                fallback_tool = get_tool_by_name("perplexity_search")
+                fallback_query = f"Transportation options from {structured_query.get('origin', '')} to {structured_query.get('destination', '')} travel guide"
+                tool_response = fallback_tool._run(fallback_query)
             
             # Step 4: Process the tool response with LLM to create a conversational reply
             # Include the original query and structured data for context
+            update_thought_process(user_id, "Generating a helpful response based on the information gathered...", replace=True)
             response_prompt = f"""Based on this user question: "{message}"
             
             And this tool response:
@@ -242,6 +328,7 @@ def process_message(message, user_info):
             messages.append(HumanMessage(content=enhanced_message))
             
             # Get response from LLM
+            update_thought_process(user_id, "No specific tool needed. Generating a direct response...", replace=True)
             final_response = llm.invoke(messages).content
             
             structured_result = {
@@ -257,8 +344,34 @@ def process_message(message, user_info):
         # Extract and cache important travel information
         save_to_cache(user_id, message, structured_result)
         
+        # Final thought process update to summarize
+        update_thought_process(
+            user_id,
+            "Response complete! I've saved relevant travel information to help with your trip planning.",
+            replace=True
+        )
+        
+        # Clear the thought process message after a delay
+        async def clear_thought_later():
+            await asyncio.sleep(20)  # Wait 20 seconds before clearing
+            if user_id in user_sessions and user_sessions[user_id].get("thought_message_id"):
+                try:
+                    if "send_message" in telegram_callbacks:
+                        telegram_callbacks["send_message"](
+                            user_id,
+                            "✓",
+                            message_id=user_sessions[user_id]["thought_message_id"],
+                            parse_mode="Markdown"
+                        )
+                except Exception as e:
+                    logger.error(f"Error clearing thought message: {e}")
+        
+        # Schedule the clearing task (this will need to be called properly in your app)
+        asyncio.create_task(clear_thought_later())
+        
         return final_response
     
     except Exception as e:
         logger.error(f"Error in message processing: {e}", exc_info=True)
+        update_thought_process(user_id, f"Sorry, I encountered an error: {str(e)}. Please try again.", replace=True)
         return "I encountered an error while processing your request. Please try again."

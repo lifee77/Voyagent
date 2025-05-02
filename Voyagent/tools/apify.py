@@ -367,8 +367,8 @@ class ApifyPOITool(BaseTool):
             logger.error("Apify API token not found")
             return "Error: Apify API token not configured"
         
-        # Use a specific Tripadvisor scraper actor ID
-        actor_id = "apify/tripadvisor" # Example actor ID
+        # Use the correct Tripadvisor scraper actor ID
+        actor_id = "maxcopell~tripadvisor"  # Updated to the correct actor ID
         url = f"{APIFY_BASE_URL}/acts/{actor_id}/runs"
         
         headers = {
@@ -378,7 +378,7 @@ class ApifyPOITool(BaseTool):
         
         # Prepare payload based on actor's expected input schema
         payload = {
-            "locationQuery": location,
+            "locationFullName": location,  # Use locationFullName instead of locationQuery
             "includeRestaurants": True,
             "includeAttractions": True,
             "includeHotels": False, # Exclude hotels for now
