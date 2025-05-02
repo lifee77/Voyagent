@@ -5,6 +5,7 @@ A Telegram bot that helps users plan their trips by providing flight information
 1. **Perplexity Sonar API** - For real-time travel information and general queries
 2. **Apify Actors** - For structured flight and attraction data
 3. **DeepL** - For multi-language translation support
+4. **Rime** - For making actual phone calls to book restaurants, hotels, and attractions
 
 ## Features
 
@@ -12,6 +13,7 @@ A Telegram bot that helps users plan their trips by providing flight information
 - Find attractions, restaurants, and activities at destinations
 - Get real-time information about travel destinations using Perplexity
 - Translate information into multiple languages with DeepL
+- Make real reservations via phone calls using Rime's AI voice agents
 - Create trip summaries with the `/summary` command
 
 ## Setup Instructions
@@ -20,7 +22,7 @@ A Telegram bot that helps users plan their trips by providing flight information
 
 - Python 3.8+
 - A Telegram account
-- API keys for Perplexity, Apify, and DeepL
+- API keys for Perplexity, Apify, DeepL, and Rime
 - An OpenAI API key for LangChain
 
 ### 2. Get a Telegram Bot Token
@@ -44,6 +46,8 @@ A Telegram bot that helps users plan their trips by providing flight information
    PERPLEXITY_API_KEY=your_perplexity_api_key
    APIFY_API_TOKEN=your_apify_api_token
    DEEPL_API_KEY=your_deepl_api_key
+   RIME_API_KEY=your_rime_api_key
+   RIME_CALLER_ID=your_caller_id_number (optional)
    PORT=5000
    ```
 
@@ -69,7 +73,31 @@ Once the bot is running, users can interact with it in their Telegram app:
    - "Find flights from New York to London for next week"
    - "What are the best things to do in Tokyo?"
    - "Tell me about Berlin in May"
-4. Use the `/summary` command to get a compiled trip itinerary based on your conversation
+4. Make reservations by asking the bot to book for you:
+   - "Book a table for dinner at Chez Marie in Paris for tomorrow at 7pm"
+   - "Reserve a room at the Grand Hotel in Rome for May 15th for 3 nights"
+   - "Get tickets to the Tokyo Sky Tree for next Tuesday"
+5. Use the `/summary` command to get a compiled trip itinerary based on your conversation
+
+## Making Reservations with Rime
+
+The Voyagent bot can make actual phone calls to businesses using Rime's AI voice agents. When a user requests a reservation, the bot will:
+
+1. Collect necessary details about the reservation
+2. Initiate a phone call to the business
+3. Have a natural conversation to make the booking
+4. Return the confirmation details to the user
+
+This feature works for:
+- Restaurant reservations
+- Hotel bookings
+- Attraction ticket purchases
+- Travel agency inquiries
+
+To use this feature, you'll need to provide:
+- The name of the business
+- A valid phone number 
+- Details like date, time, number of people, etc.
 
 ## Architecture
 
@@ -78,6 +106,7 @@ Telegram --> Flask /webhook --> LangChain Agent (MCP Runner)
                            |--> Tool 1: Perplexity web search
                            |--> Tool 2: Apify flight / POI actors
                            |--> Tool 3: DeepL translation
+                           |--> Tool 4: Rime reservation calls
                            '--> Local cache (JSON) + /summary formatter
 ```
 
@@ -86,7 +115,8 @@ Telegram --> Flask /webhook --> LangChain Agent (MCP Runner)
 For a quick 3-minute demo:
 1. Ask about flights (e.g., "Find flights from Berlin to Rome")
 2. Ask about activities (e.g., "What are popular attractions in Rome?")
-3. Type `/summary` to get your trip plan
+3. Make a reservation (e.g., "Book a table at La Pergola in Rome for tomorrow at 8pm")
+4. Type `/summary` to get your trip plan with confirmed reservations
 
 ## Extending the Bot
 

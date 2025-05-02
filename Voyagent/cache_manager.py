@@ -35,6 +35,7 @@ def save_to_cache(user_id, query, result):
                 "flights": [],
                 "accommodations": [],
                 "activities": [],
+                "reservations": [],
                 "notes": []
             },
             "queries": []
@@ -63,6 +64,8 @@ def save_to_cache(user_id, query, result):
             _extract_poi_info(cache_data, tool_output)
         elif tool_name == "perplexity_search":
             _extract_destination_info(cache_data, query, tool_output)
+        elif tool_name == "rime_reservation":
+            _extract_reservation_info(cache_data, tool_input, tool_output)
     
     # Add this query to the history
     cache_data["queries"].append({
@@ -194,6 +197,66 @@ def _extract_destination_info(cache_data, query, tool_output):
                 
     except Exception as e:
         logger.error(f"Error extracting destination info: {e}")
+
+def _extract_reservation_info(cache_data, tool_input, tool_output):
+    """Extract reservation information from Rime tool calls"""
+    try:
+        # Parse the tool input as JSON to get reservation details
+        if isinstance(tool_input, str):
+            try:
+                reservation_data = json.loads(tool_input)
+            except json.JSONDecodeError:
+                logger.error("Invalid JSON in Rime tool input")
+                return
+        else:
+            reservation_data = tool_input
+        
+        # Extract basic information from the reservation
+        service_type = reservation_data.get("service_type", "")
+        service_name = reservation_data.get("service_name", "")
+        user_name = reservation_data.get("user_name", "")
+        reservation_details = reservation_data.get("reservation_details", {})
+        
+        # Create a structured reservation entry
+        reservation_info = {
+            "service_type": service_type,
+            "service_name": service_name,
+            "status": "confirmed",  # Assume success for now
+            "date": reservation_details.get("date", ""),
+            "time": reservation_details.get("time", ""),
+            "num_people": reservation_details.get("num_people", ""),
+            "details": reservation_details.get("special_requests", ""),
+            "confirmation": f"Made via Rime on {datetime.now().strftime('%Y-%m-%d')}"
+        }
+        
+        # Extract confirmation number from the tool output
+        if isinstance(tool_output, str):
+            confirmation_lines = tool_output.split("\n")
+            for line in confirmation_lines:
+                if "confirmation" in line.lower() or "reference" in line.lower():
+                    reservation_info["confirmation"] = line.strip()
+                    break
+        
+        # Add the reservation if it's not a duplicate
+        if reservation_info not in cache_data["trip_details"]["reservations"]:
+            cache_data["trip_details"]["reservations"].append(reservation_info)
+        
+        # If this was a hotel reservation, also add to accommodations
+        if service_type.lower() == "hotel":
+            accommodation_info = {
+                "name": service_name,
+                "location": reservation_details.get("location", ""),
+                "check_in": reservation_details.get("date", ""),
+                "duration": reservation_details.get("duration", ""),
+                "price": reservation_details.get("price", ""),
+                "confirmation": reservation_info.get("confirmation", "")
+            }
+            
+            if accommodation_info not in cache_data["trip_details"]["accommodations"]:
+                cache_data["trip_details"]["accommodations"].append(accommodation_info)
+        
+    except Exception as e:
+        logger.error(f"Error extracting reservation info: {e}")
 
 def clear_cache(user_id=None):
     """Clear cache for a user or all users"""

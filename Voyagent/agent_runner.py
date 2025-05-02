@@ -14,6 +14,7 @@ from langchain.schema import SystemMessage, HumanMessage
 from Voyagent.tools.perplexity import PerplexitySearchTool
 from Voyagent.tools.apify import ApifyFlightTool, ApifyPOITool
 from Voyagent.tools.deepl import DeepLTranslateTool
+from Voyagent.tools.rime import RimeReservationTool
 from Voyagent.cache_manager import save_to_cache, get_from_cache
 
 # Load environment variables
@@ -34,7 +35,8 @@ tools = [
     PerplexitySearchTool(),
     ApifyFlightTool(),
     ApifyPOITool(),
-    DeepLTranslateTool()
+    DeepLTranslateTool(),
+    RimeReservationTool()
 ]
 
 # Format tools for OpenAI functions
@@ -48,12 +50,19 @@ You have access to these tools:
 2. Apify Flight Finder - Use this to find flight information when users ask about travel between cities
 3. Apify Points of Interest - Use this to find attractions, restaurants, and activities in a destination
 4. DeepL Translate - Use this to translate text if the user asks for information in a different language
+5. Rime Reservation - Use this to make actual phone calls to book restaurants, hotels, attractions, or contact travel agents when the user explicitly requests to make a reservation or booking
 
 When the user asks a travel-related question:
 - If they ask about flights, use the Apify Flight Finder tool
 - If they ask about things to do, places to visit, or attractions, use the Apify Points of Interest tool
 - For general information about a destination, use Perplexity Search
 - If the user mentions a language or asks for translation, use the DeepL Translate tool
+- If the user explicitly asks to book or make a reservation, use the Rime Reservation tool to make phone calls on their behalf
+
+For the Rime Reservation tool:
+- Only use it when a user specifically asks to make a booking or reservation
+- You'll need to collect complete information like restaurant/hotel name, phone number, date, time, number of people, and user name
+- The tool makes actual phone calls, so only use it for legitimate booking requests
 
 Store important information about the user's trip in their session for later summarization.
 Be concise and helpful. Always provide clear, actionable travel advice.
