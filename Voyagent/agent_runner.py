@@ -205,5 +205,5 @@ def process_message(message, user_info):
         return final_response
     
     except Exception as e:
-        logger.error(f"Error in message processing: {e}")
+        logger.error(f"Error in message processing: {e}", exc_info=True)  # Added exc_info=True
         return "I encountered an error while processing your request. Please try again."
