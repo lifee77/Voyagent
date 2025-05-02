@@ -4,7 +4,7 @@ import logging
 from dotenv import load_dotenv
 # Import the correct modules
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI  # Changed to use Gemini
 
 # Import tool implementations
 from Voyagent.tools.perplexity import PerplexitySearchTool
@@ -18,6 +18,13 @@ load_dotenv()
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Print the API key (first few characters) for debugging
+api_key = os.getenv("GOOGLE_API_KEY")
+if api_key:
+    logger.info(f"Google API key loaded: {api_key[:8]}...")
+else:
+    logger.error("Failed to load GOOGLE_API_KEY from environment")
 
 # System prompt
 SYSTEM_PROMPT = """You are a helpful Trip Assistant bot that helps users plan their travel.
@@ -47,11 +54,11 @@ Be concise and helpful. Always provide clear, actionable travel advice.
 The current date is May 2, 2025.
 """
 
-# Initialize LLM with OpenAI API key
-llm = ChatOpenAI(
-    model="gpt-4-turbo",
+# Initialize LLM with Google Gemini API key
+llm = ChatGoogleGenerativeAI(
+    model="gemini-pro",
     temperature=0,
-    api_key=os.getenv("OPENAI_API_KEY")
+    google_api_key=os.getenv("GOOGLE_API_KEY")
 )
 
 # Initialize tools
