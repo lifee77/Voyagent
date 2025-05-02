@@ -56,7 +56,7 @@ The current date is May 2, 2025.
 
 # Initialize LLM with Google Gemini API key
 llm = ChatGoogleGenerativeAI(
-    model="gemini-pro",
+    model="gemini-2.0-flash",  # Updated from gemini-pro to gemini-2.5-pro
     temperature=0,
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
