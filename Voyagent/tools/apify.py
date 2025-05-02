@@ -20,7 +20,7 @@ APIFY_BASE_URL = "https://api.apify.com/v2"
 class ApifyFlightTool(BaseTool):
     name = "apify_flight"
     description = """
-    Uses Apify Flight Finder actor to search for flight information between cities.
+    Uses Apify Skyscanner Flight Finder to search for flight information between cities.
     Can handle natural language queries about travel plans.
     
     Examples:
@@ -53,8 +53,8 @@ class ApifyFlightTool(BaseTool):
                 logger.warning("Could not parse flight parameters from query")
                 return "I couldn't determine the departure and destination cities from your query. Could you please specify where you're traveling from and to?"
         
-        # Use a verified flight search actor from Apify
-        actor_id = "drobnikj/flights-crawler"  # Updated to a known working actor
+        # Use the correct Skyscanner flight actor
+        actor_id = "jupri~skyscanner-flight"
         
         url = f"{APIFY_BASE_URL}/acts/{actor_id}/runs"
         
@@ -74,15 +74,16 @@ class ApifyFlightTool(BaseTool):
                 # If date parsing fails, try to extract a date range
                 departure_date = ""
         
-        # Prepare payload based on actor's expected input schema
+        # Prepare payload based on the Skyscanner actor's expected input schema
         payload = {
-            "origin": params.get("from", ""),
-            "destination": params.get("to", ""),
-            "outboundDate": departure_date,
-            "currency": "USD",
-            "directOnly": False,
+            "originLocationCode": params.get("from", ""),
+            "destinationLocationCode": params.get("to", ""),
+            "departureDate": departure_date,
+            "returnDate": "",  # Assuming one-way for simplicity
             "adults": 1,
-            "maxResults": 10
+            "currency": "USD",
+            "maxResults": 10,
+            "directFlight": False
         }
         
         try:
@@ -452,8 +453,8 @@ class ApifyGoogleMapsTool(BaseTool):
             logger.error("Apify API token not found")
             return "Error: Apify API token not configured"
         
-        # Use a specific Google Maps scraper actor ID
-        actor_id = "apify/google-maps-scraper" # Example actor ID
+        # Use the specified Google Maps scraper actor ID
+        actor_id = "nwua9Gu5YrADL7ZDj" # Updated to correct actor ID from the provided URL
         url = f"{APIFY_BASE_URL}/acts/{actor_id}/runs"
         
         headers = {
@@ -461,27 +462,29 @@ class ApifyGoogleMapsTool(BaseTool):
             "Content-Type": "application/json"
         }
         
-        # Prepare payload based on actor's expected input schema
-        # This actor often uses a search query string
+        # Prepare payload based on the specific actor's expected input schema
         payload = {
             "searchStrings": [query],
-            "maxCrawledPlacesPerSearch": 5, # Limit results for efficiency
+            "maxCrawledPlaces": 5,
             "language": "en",
-            "includeReviews": False, # Keep payload smaller
-            "includeImages": True, # Request images if needed
-            "includeOpeningHours": True,
-            "includePeopleAlsoSearch": False
+            "saveReviews": False,
+            "saveImages": True,
+            "savePopularTimes": True,
+            "maxReviews": 0,
+            "maxImages": 3,
+            "exportPlaceUrls": False
         }
         
         # Check if it looks like a directions query
-        if "directions" in query.lower() or "driving time" in query.lower():
-             payload["scrapeDirections"] = True
-             # Adjust payload for directions if needed by the specific actor
-             # Example: might need separate start/end points
-             # payload["startLocation"] = ...
-             # payload["endLocation"] = ...
-             logger.info("Detected directions query, enabling directions scraping.")
-
+        if "directions" in query.lower() or "driving time" in query.lower() or "how to get" in query.lower():
+            # Extract origin and destination if possible
+            origin_dest = self._extract_directions_endpoints(query)
+            if origin_dest:
+                payload["directionsStartPoint"] = origin_dest[0]
+                payload["directionsEndPoint"] = origin_dest[1]
+                payload["directionsMode"] = "driving" # Default to driving mode
+                logger.info(f"Detected directions query: {origin_dest[0]} → {origin_dest[1]}")
+        
         try:
             logger.info(f"Running Apify actor {actor_id} with payload: {json.dumps(payload)}")
             # Start the actor run
@@ -511,8 +514,8 @@ class ApifyGoogleMapsTool(BaseTool):
 
             # Get dataset items
             dataset_url = f"{APIFY_BASE_URL}/datasets/{dataset_id}/items"
-            # Fetch more items if it was a directions query, otherwise limit
-            limit = 20 if "scrapeDirections" in payload else 5
+            # Fetch appropriate number of results
+            limit = 10  # Default limit
             dataset_resp = requests.get(dataset_url, params={"token": api_token, "format": "json", "limit": limit})
             dataset_resp.raise_for_status()
             maps_data = dataset_resp.json()
@@ -529,3 +532,24 @@ class ApifyGoogleMapsTool(BaseTool):
         except Exception as e:
             logger.error(f"An unexpected error occurred during Google Maps search: {e}", exc_info=True)
             return f"An unexpected error occurred while searching Google Maps."
+    
+    def _extract_directions_endpoints(self, query: str) -> Optional[Tuple[str, str]]:
+        """Extract origin and destination from a directions query."""
+        query_lower = query.lower()
+        
+        # Try various patterns for directions
+        patterns = [
+            r'directions\s+from\s+([^\.]+)\s+to\s+([^\.]+)', 
+            r'how\s+to\s+get\s+from\s+([^\.]+)\s+to\s+([^\.]+)',
+            r'route\s+from\s+([^\.]+)\s+to\s+([^\.]+)',
+            r'([^\.]+)\s+to\s+([^\.]+)\s+directions'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                origin = match.group(1).strip()
+                destination = match.group(2).strip()
+                return origin, destination
+        
+        return None
