@@ -56,7 +56,7 @@ class GeminiPreprocessor:
         
         Format your response as a JSON object with these fields:
         {
-            "query_type": "flight" | "poi" | "directions" | "recommendations" | "general",
+            "query_type": "flight" | "poi" | "directions" | "recommendations" | "general" | "transport_comparison",
             "origin": "location name or empty string if not specified",
             "destination": "location name",
             "date_info": {
@@ -65,8 +65,14 @@ class GeminiPreprocessor:
                 "duration": "number of days or empty string"
             },
             "preferences": ["list", "of", "preferences"],
-            "structured_query": "a reformatted version of the query optimized for search tools"
+            "structured_query": "a reformatted version of the query optimized for search tools",
+            "transport_modes": ["flight", "drive", "bus", "train"] (only for transport_comparison queries)
         }
+        
+        If the query is about comparing different transportation methods (like "flights vs driving"), 
+        set query_type to "transport_comparison" and list the transport modes in transport_modes array.
+
+        For airport codes, use standard airport codes like SFO for San Francisco or FAT for Fresno.
         
         For example, given "I want to fly to Paris from New York next weekend", you would return:
         {
@@ -82,7 +88,19 @@ class GeminiPreprocessor:
             "structured_query": "flights from New York to Paris departing May 10, 2025"
         }
         
+        For "Should I drive or fly from San Francisco to Yosemite?", return:
+        {
+            "query_type": "transport_comparison",
+            "origin": "San Francisco",
+            "destination": "Yosemite",
+            "date_info": {"start_date": "", "end_date": "", "duration": ""},
+            "preferences": [],
+            "structured_query": "comparison of driving vs flying from San Francisco to Yosemite",
+            "transport_modes": ["drive", "flight"]
+        }
+        
         Today's date is May 2, 2025. Use this to calculate relative dates.
+        For "this weekend", use May 3-4, 2025. For "next weekend", use May 10-11, 2025.
         """
         
         messages = [
@@ -108,6 +126,32 @@ class GeminiPreprocessor:
             
             # Add original query to the response
             structured_data["original_query"] = query
+            
+            # Special case handling for comparison queries
+            if "vs" in query.lower() or "versus" in query.lower() or "or" in query.lower() and ("fly" in query.lower() or "drive" in query.lower()):
+                if structured_data.get("query_type") != "transport_comparison":
+                    structured_data["query_type"] = "transport_comparison"
+                    structured_data["transport_modes"] = []
+                    
+                    if "fly" in query.lower() or "flight" in query.lower():
+                        structured_data["transport_modes"].append("flight")
+                    if "drive" in query.lower() or "car" in query.lower():
+                        structured_data["transport_modes"].append("drive")
+                    if "train" in query.lower():
+                        structured_data["transport_modes"].append("train")
+                    if "bus" in query.lower():
+                        structured_data["transport_modes"].append("bus")
+            
+            # Fix airport codes
+            if structured_data.get("origin", "").lower() in ["sf", "san francisco"]:
+                structured_data["origin_code"] = "SFO"
+            elif structured_data.get("origin", "").lower() in ["fresno", "fres"]:
+                structured_data["origin_code"] = "FAT"
+                
+            if structured_data.get("destination", "").lower() in ["fresno", "fres"]:
+                structured_data["destination_code"] = "FAT"
+            elif structured_data.get("destination", "").lower() in ["sf", "san francisco"]:
+                structured_data["destination_code"] = "SFO"
             
             return structured_data
             

@@ -191,11 +191,23 @@ def process_message(message, user_info):
         elif query_type == "poi" or query_type == "recommendations":
             tool_to_use = get_tool_by_name("apify_poi")
             update_thought_process(user_id, "Looking for attractions and points of interest...", replace=True)
-            # Use the destination for POI search
-            if structured_query.get("destination"):
+            
+            # For recommendation queries when we have origin but no destination, use Perplexity instead
+            if query_type == "recommendations" and structured_query.get("origin") and not structured_query.get("destination"):
+                update_thought_process(user_id, "This looks like a request for destination recommendations. Using Perplexity Search for better results...", replace=True)
+                tool_to_use = get_tool_by_name("perplexity_search")
+                message = f"Weekend trip destinations from {structured_query.get('origin')} within 3-4 hours by car or short flight"
+                logger.info(f"Reformulated as general search: {message}")
+            # Use the destination for POI search only when we have a specific destination
+            elif structured_query.get("destination"):
                 message = structured_query.get("destination")
                 logger.info(f"Structured POI query: {message}")
                 update_thought_process(user_id, f"Finding attractions and things to do in {message}...", replace=True)
+            else:
+                # If query doesn't contain a clear destination, switch to Perplexity
+                update_thought_process(user_id, "No specific destination found. Using general search for travel recommendations...", replace=True)
+                tool_to_use = get_tool_by_name("perplexity_search")
+                # Keep the original message, as it's a natural language query
                 
         elif query_type == "directions":
             tool_to_use = get_tool_by_name("apify_google_maps")

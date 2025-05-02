@@ -362,6 +362,11 @@ class ApifyPOITool(BaseTool):
         """Run Apify Tripadvisor Scraper with the given location."""
         logger.info(f"TOOL: apify_poi - Location: {location}")
         
+        # Check if the input looks like a query rather than a location
+        if len(location.split()) > 4 or "?" in location:
+            logger.warning(f"Input looks like a query rather than a location: {location}")
+            return f"Error: Cannot process this as a location. Please provide a specific destination name."
+        
         api_token = os.getenv("APIFY_API_TOKEN")
         if not api_token:
             logger.error("Apify API token not found")
@@ -378,7 +383,7 @@ class ApifyPOITool(BaseTool):
         
         # Prepare payload based on actor's expected input schema
         payload = {
-            "locationFullName": location,  # Use locationFullName instead of locationQuery
+            "locationFullName": location,
             "includeRestaurants": True,
             "includeAttractions": True,
             "includeHotels": False, # Exclude hotels for now
@@ -395,9 +400,9 @@ class ApifyPOITool(BaseTool):
             dataset_id = run_info["data"]["defaultDatasetId"]
             logger.info(f"Apify actor run started: run_id={run_id}, dataset_id={dataset_id}")
 
-            # Poll for run completion
+            # Poll for run completion with timeout
             status_url = f"{APIFY_BASE_URL}/actor-runs/{run_id}"
-            max_wait_time = 180 # Wait up to 3 minutes
+            max_wait_time = 60  # Reduced timeout to 60 seconds (1 minute)
             start_time = time.time()
             while time.time() - start_time < max_wait_time:
                 status_resp = requests.get(status_url, params={"token": api_token})
@@ -407,6 +412,12 @@ class ApifyPOITool(BaseTool):
                 if run_status in ["SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED"]:
                     break
                 time.sleep(5)
+            
+            # Check if we timed out
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= max_wait_time:
+                logger.warning(f"Apify actor run timed out after {elapsed_time:.1f} seconds")
+                return f"Error: POI search timed out after {elapsed_time:.1f} seconds. Consider using a more specific location name or trying a different search."
                 
             if run_status != "SUCCEEDED":
                 logger.error(f"Apify actor run {run_id} did not succeed. Status: {run_status}")
