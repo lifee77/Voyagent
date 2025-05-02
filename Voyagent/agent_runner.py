@@ -56,7 +56,7 @@ The current date is May 2, 2025.
 
 # Initialize LLM with Google Gemini API key
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",  # Updated from gemini-pro to gemini-2.5-pro
+    model="gemini-2.0-flash",  # Updated to use gemini-2.0-flash
     temperature=0,
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
@@ -165,11 +165,11 @@ def process_message(message, user_info):
             
             final_response = llm.invoke(response_messages).content
             
-            # Create a structured result for cache_manager
+            # Create structured_result directly with needed fields
             structured_result = {
                 "output": final_response,
                 "intermediate_steps": [
-                    [{"tool": tool_to_use.name, "tool_input": message}, tool_response]
+                    {"tool_name": tool_to_use.name, "tool_input": message, "tool_output": tool_response}
                 ]
             }
             

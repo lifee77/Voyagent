@@ -99,9 +99,25 @@ class ApifyFlightTool(BaseTool):
     
     def _get_mock_flights(self, params: dict) -> list:
         """Generate mock flight data for demo purposes."""
-        from_city = params["from"].lower()
-        to_city = params["to"].lower()
+        from_city = params["from"].lower() if params["from"] else ""
+        to_city = params["to"].lower() if params["to"] else ""
         
+        # Handle cases where the query doesn't have clear from/to parameters
+        if not from_city or not to_city:
+            # Try to extract locations from the original query
+            query_lower = " ".join(params.values()).lower()
+            
+            if "yosemite" in query_lower:
+                # Default to San Francisco to Fresno (nearest airport to Yosemite)
+                if "san francisco" in query_lower or "sf" in query_lower:
+                    from_city = "san francisco"
+                    to_city = "fresno"
+                else:
+                    # Default case for Yosemite queries
+                    from_city = "san francisco"
+                    to_city = "fresno"
+        
+        # New York to London flights
         if "new york" in from_city and "london" in to_city:
             return [
                 {
@@ -115,123 +131,67 @@ class ApifyFlightTool(BaseTool):
                     "arrivalDate": "2025-05-16T07:45:00",
                     "duration": "7h 15m",
                     "price": "$742",
-                    "currency": "USD",
-                    "stopCount": 0,
-                    "cabinClass": "Economy"
+                    "stops": 0
                 },
                 {
-                    "airline": "United Airlines",
-                    "flightNumber": "UA14",
-                    "departureAirport": "EWR",
-                    "arrivalAirport": "LHR",
-                    "departureCity": "New York",
-                    "arrivalCity": "London",
-                    "departureDate": "2025-05-15T18:15:00",
-                    "arrivalDate": "2025-05-16T06:30:00",
-                    "duration": "7h 15m",
-                    "price": "$689",
-                    "currency": "USD",
-                    "stopCount": 0,
-                    "cabinClass": "Economy"
-                },
-                {
-                    "airline": "Virgin Atlantic",
-                    "flightNumber": "VS4",
+                    "airline": "American Airlines",
+                    "flightNumber": "AA100",
                     "departureAirport": "JFK",
                     "arrivalAirport": "LHR",
                     "departureCity": "New York",
                     "arrivalCity": "London",
-                    "departureDate": "2025-05-15T21:00:00",
-                    "arrivalDate": "2025-05-16T09:20:00",
-                    "duration": "7h 20m",
-                    "price": "$715",
-                    "currency": "USD",
-                    "stopCount": 0,
-                    "cabinClass": "Economy"
+                    "departureDate": "2025-05-15T18:00:00",
+                    "arrivalDate": "2025-05-16T06:30:00",
+                    "duration": "7h 30m",
+                    "price": "$698",
+                    "stops": 0
                 }
             ]
-        elif "tokyo" in from_city and "paris" in to_city:
+        # San Francisco to Fresno/Yosemite flights
+        elif ("san francisco" in from_city or "sf" in from_city) and ("fresno" in to_city or "yosemite" in to_city):
             return [
                 {
-                    "airline": "Air France",
-                    "flightNumber": "AF275",
-                    "departureAirport": "NRT",
-                    "arrivalAirport": "CDG",
-                    "departureCity": "Tokyo",
-                    "arrivalCity": "Paris",
-                    "departureDate": "2025-05-20T11:45:00",
-                    "arrivalDate": "2025-05-20T17:25:00",
-                    "duration": "12h 40m",
-                    "price": "$1,230",
-                    "currency": "USD",
-                    "stopCount": 0,
-                    "cabinClass": "Economy"
+                    "airline": "United Airlines",
+                    "flightNumber": "UA5568",
+                    "departureAirport": "SFO",
+                    "arrivalAirport": "FAT",
+                    "departureCity": "San Francisco",
+                    "arrivalCity": "Fresno (Yosemite Intl)",
+                    "departureDate": "2025-05-12T08:30:00",
+                    "arrivalDate": "2025-05-12T09:45:00",
+                    "duration": "1h 15m",
+                    "price": "$159",
+                    "stops": 0
                 },
                 {
-                    "airline": "Japan Airlines",
-                    "flightNumber": "JL215",
-                    "departureAirport": "HND",
-                    "arrivalAirport": "CDG",
-                    "departureCity": "Tokyo",
-                    "arrivalCity": "Paris",
-                    "departureDate": "2025-05-20T10:30:00",
-                    "arrivalDate": "2025-05-20T16:15:00",
-                    "duration": "12h 45m",
-                    "price": "$1,315",
-                    "currency": "USD",
-                    "stopCount": 0,
-                    "cabinClass": "Economy"
+                    "airline": "American Airlines",
+                    "flightNumber": "AA5844",
+                    "departureAirport": "SFO",
+                    "arrivalAirport": "FAT",
+                    "departureCity": "San Francisco",
+                    "arrivalCity": "Fresno (Yosemite Intl)",
+                    "departureDate": "2025-05-13T10:15:00",
+                    "arrivalDate": "2025-05-13T11:30:00",
+                    "duration": "1h 15m",
+                    "price": "$178",
+                    "stops": 0
                 }
             ]
-        elif "berlin" in from_city and "rome" in to_city:
-            return [
-                {
-                    "airline": "Lufthansa",
-                    "flightNumber": "LH230",
-                    "departureAirport": "TXL",
-                    "arrivalAirport": "FCO",
-                    "departureCity": "Berlin",
-                    "arrivalCity": "Rome",
-                    "departureDate": "2025-05-18T14:25:00",
-                    "arrivalDate": "2025-05-18T16:40:00",
-                    "duration": "2h 15m",
-                    "price": "€187",
-                    "currency": "EUR",
-                    "stopCount": 0,
-                    "cabinClass": "Economy"
-                },
-                {
-                    "airline": "Ryanair",
-                    "flightNumber": "FR8542",
-                    "departureAirport": "SXF",
-                    "arrivalAirport": "CIA",
-                    "departureCity": "Berlin",
-                    "arrivalCity": "Rome",
-                    "departureDate": "2025-05-18T10:05:00",
-                    "arrivalDate": "2025-05-18T12:15:00",
-                    "duration": "2h 10m",
-                    "price": "€93",
-                    "currency": "EUR",
-                    "stopCount": 0,
-                    "cabinClass": "Economy"
-                }
-            ]
+        # Default mock data for any other route
         else:
             return [
                 {
-                    "airline": "Generic Airline",
-                    "flightNumber": "GA123",
-                    "departureAirport": "AAA",
-                    "arrivalAirport": "BBB",
-                    "departureCity": params["from"].capitalize(),
-                    "arrivalCity": params["to"].capitalize(),
-                    "departureDate": "2025-05-15T10:00:00",
-                    "arrivalDate": "2025-05-15T14:00:00",
-                    "duration": "4h 00m",
-                    "price": "$500",
-                    "currency": "USD",
-                    "stopCount": 0,
-                    "cabinClass": "Economy"
+                    "message": "No direct flights found for this route. Consider checking alternative airports or transportation options.",
+                    "alternatives": [
+                        {
+                            "type": "Note",
+                            "description": f"For travel to Yosemite National Park from San Francisco, flying to Fresno (FAT) is the closest option, followed by a rental car or bus service."
+                        },
+                        {
+                            "type": "Ground Transportation",
+                            "description": "YARTS (Yosemite Area Regional Transportation System) offers bus service from various cities to Yosemite."
+                        }
+                    ]
                 }
             ]
 
