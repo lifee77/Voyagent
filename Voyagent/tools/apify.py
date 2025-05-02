@@ -422,3 +422,518 @@ class ApifyPOITool(BaseTool):
                     "description": f"A highly-rated dining establishment serving authentic local cuisine and specialties from {location}."
                 }
             ]
+
+
+class ApifyGoogleMapsTool(BaseTool):
+    name = "apify_google_maps"
+    description = """
+    Uses Apify Google Maps Scraper actor to search for places like restaurants, attractions, or businesses.
+    Provides details such as ratings, reviews, driving times, and images.
+    
+    Input should be in the format: "type: [place type], location: [location], query: [optional search terms]"
+    Example: "type: restaurant, location: New York, query: Italian food"
+    """
+    
+    def _run(self, query: str) -> str:
+        """Run Apify Google Maps Scraper with the given parameters."""
+        logger.info(f"TOOL: apify_google_maps - Query: {query}")
+        
+        api_token = os.getenv("APIFY_API_TOKEN")
+        if not api_token:
+            logger.error("Apify API token not found")
+            return "Error: Apify API token not configured"
+        
+        # Parse query to extract parameters
+        params = self._parse_maps_query(query)
+        
+        # In a real implementation, call the Apify Google Maps Scraper actor
+        # actor_id = "apify/google-maps-scraper"
+        # url = f"https://api.apify.com/v2/acts/{actor_id}/runs"
+        
+        # headers = {
+        #     "Authorization": f"Bearer {api_token}",
+        #     "Content-Type": "application/json"
+        # }
+        
+        # payload = {
+        #     "searchString": f"{params.get('query', '')} {params.get('type', '')} in {params.get('location', '')}".strip(),
+        #     "maxCrawledPlaces": 10,
+        #     "includeReviews": True,
+        #     "includeImages": True,
+        #     "language": "en"
+        # }
+        
+        try:
+            # Uncomment for actual API call
+            # response = requests.post(url, headers=headers, json=payload)
+            # response.raise_for_status()
+            # run_info = response.json()
+            # run_id = run_info["data"]["id"]
+            
+            # # Poll for run completion
+            # status_url = f"https://api.apify.com/v2/actor-runs/{run_id}"
+            # while True:
+            #     status_resp = requests.get(status_url, headers=headers)
+            #     status_data = status_resp.json()
+            #     if status_data["data"]["status"] in ["SUCCEEDED", "FAILED", "TIMED-OUT"]:
+            #         break
+            #     time.sleep(2)
+            
+            # # Get dataset items
+            # dataset_id = status_data["data"]["defaultDatasetId"]
+            # dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+            # dataset_resp = requests.get(dataset_url, headers=headers)
+            # places = dataset_resp.json()
+            # return places
+            
+            # For demo purposes, return mock data
+            mock_places = self._get_mock_places(params)
+            return json.dumps(mock_places)
+            
+        except Exception as e:
+            logger.error(f"Error calling Apify API: {e}")
+            return f"Error searching for places: {str(e)}"
+    
+    def _parse_maps_query(self, query: str) -> dict:
+        """Parse the query to extract parameters."""
+        params = {"type": "", "location": "", "query": ""}
+        
+        for part in query.split(","):
+            part = part.strip().lower()
+            
+            if part.startswith("type:"):
+                params["type"] = part[5:].strip()
+            elif part.startswith("location:"):
+                params["location"] = part[9:].strip()
+            elif part.startswith("query:"):
+                params["query"] = part[6:].strip()
+        
+        return params
+    
+    def _get_mock_places(self, params: dict) -> list:
+        """Generate mock place data for demo purposes."""
+        place_type = params.get("type", "").lower()
+        location = params.get("location", "").lower()
+        query = params.get("query", "").lower()
+        
+        # Restaurant search
+        if "restaurant" in place_type:
+            if "new york" in location:
+                if "italian" in query:
+                    return [
+                        {
+                            "name": "Carbone",
+                            "address": "181 Thompson St, New York, NY 10012",
+                            "rating": 4.7,
+                            "totalReviews": 3452,
+                            "priceLevel": "$$$",
+                            "category": "Italian restaurant",
+                            "openingHours": "5:00 PM - 11:00 PM",
+                            "phoneNumber": "(212) 254-3000",
+                            "website": "https://www.carbonenewyork.com",
+                            "description": "Upscale Italian-American restaurant known for its tableside service and classic dishes.",
+                            "popularDishes": ["Spicy Rigatoni Vodka", "Veal Parmesan", "Caesar Salad"],
+                            "drivingTime": {
+                                "from": "Times Square",
+                                "duration": "15 minutes",
+                                "distance": "2.1 miles"
+                            },
+                            "images": [
+                                "https://example.com/carbone_interior.jpg",
+                                "https://example.com/carbone_food1.jpg",
+                                "https://example.com/carbone_food2.jpg"
+                            ],
+                            "reviews": [
+                                {
+                                    "text": "Amazing atmosphere and the spicy rigatoni is to die for!",
+                                    "rating": 5,
+                                    "author": "John D."
+                                },
+                                {
+                                    "text": "Classic New York Italian experience. Expensive but worth it for a special occasion.",
+                                    "rating": 5,
+                                    "author": "Maria L."
+                                }
+                            ]
+                        },
+                        {
+                            "name": "Lilia",
+                            "address": "567 Union Ave, Brooklyn, NY 11222",
+                            "rating": 4.8,
+                            "totalReviews": 2897,
+                            "priceLevel": "$$$",
+                            "category": "Italian restaurant",
+                            "openingHours": "5:30 PM - 10:30 PM",
+                            "phoneNumber": "(718) 576-3095",
+                            "website": "https://www.lilianewyork.com",
+                            "description": "Modern Italian restaurant in a converted auto body shop with handmade pasta.",
+                            "popularDishes": ["Sheep's Milk Cheese Filled Agnolotti", "Grilled Clams", "Cacio e Pepe Fritelle"],
+                            "drivingTime": {
+                                "from": "Times Square",
+                                "duration": "25 minutes",
+                                "distance": "5.8 miles"
+                            },
+                            "images": [
+                                "https://example.com/lilia_interior.jpg",
+                                "https://example.com/lilia_pasta1.jpg",
+                                "https://example.com/lilia_pasta2.jpg"
+                            ],
+                            "reviews": [
+                                {
+                                    "text": "Best pasta I've had outside of Italy. The agnolotti is incredible.",
+                                    "rating": 5,
+                                    "author": "Sophie R."
+                                },
+                                {
+                                    "text": "Worth the wait to get a reservation. The atmosphere and food are both exceptional.",
+                                    "rating": 4,
+                                    "author": "Michael T."
+                                }
+                            ]
+                        }
+                    ]
+            elif "tokyo" in location:
+                if "sushi" in query or query == "":
+                    return [
+                        {
+                            "name": "Sukiyabashi Jiro",
+                            "address": "4 Chome-2-15 Ginza, Chuo City, Tokyo",
+                            "rating": 4.9,
+                            "totalReviews": 1543,
+                            "priceLevel": "$$$$",
+                            "category": "Sushi restaurant",
+                            "openingHours": "11:30 AM - 2:00 PM, 5:00 PM - 8:00 PM",
+                            "phoneNumber": "+81 3-3535-3600",
+                            "description": "World-famous sushi restaurant featured in 'Jiro Dreams of Sushi' documentary. Reservations required months in advance.",
+                            "popularDishes": ["Omakase Course"],
+                            "drivingTime": {
+                                "from": "Tokyo Station",
+                                "duration": "10 minutes",
+                                "distance": "1.2 miles"
+                            },
+                            "images": [
+                                "https://example.com/jiro_interior.jpg",
+                                "https://example.com/jiro_sushi1.jpg",
+                                "https://example.com/jiro_sushi2.jpg"
+                            ],
+                            "reviews": [
+                                {
+                                    "text": "Once-in-a-lifetime dining experience. The precision and care put into each piece is extraordinary.",
+                                    "rating": 5,
+                                    "author": "David L."
+                                },
+                                {
+                                    "text": "The best sushi I've ever had. Simple, pure, and perfect.",
+                                    "rating": 5,
+                                    "author": "Emma K."
+                                }
+                            ]
+                        },
+                        {
+                            "name": "Sushi Saito",
+                            "address": "1 Chome-4-5 Roppongi, Minato City, Tokyo",
+                            "rating": 4.9,
+                            "totalReviews": 1287,
+                            "priceLevel": "$$$$",
+                            "category": "Sushi restaurant",
+                            "openingHours": "12:00 PM - 2:00 PM, 5:00 PM - 10:00 PM",
+                            "phoneNumber": "+81 3-3589-4412",
+                            "description": "Exclusive 3-Michelin-starred sushi restaurant requiring introductions for reservations.",
+                            "popularDishes": ["Fatty Tuna", "Sea Urchin", "Omakase Course"],
+                            "drivingTime": {
+                                "from": "Tokyo Station",
+                                "duration": "15 minutes",
+                                "distance": "2.5 miles"
+                            },
+                            "images": [
+                                "https://example.com/saito_interior.jpg",
+                                "https://example.com/saito_sushi1.jpg",
+                                "https://example.com/saito_sushi2.jpg"
+                            ],
+                            "reviews": [
+                                {
+                                    "text": "Chef Saito's attention to detail and the quality of fish is unmatched.",
+                                    "rating": 5,
+                                    "author": "James W."
+                                },
+                                {
+                                    "text": "The rice temperature and seasoning are perfect. Worth every penny.",
+                                    "rating": 5,
+                                    "author": "Yuki T."
+                                }
+                            ]
+                        }
+                    ]
+            else:
+                # Generic restaurant results for any other location
+                return [
+                    {
+                        "name": f"Top Restaurant in {location.title()}",
+                        "address": f"123 Main St, {location.title()}",
+                        "rating": 4.7,
+                        "totalReviews": 1245,
+                        "priceLevel": "$$$",
+                        "category": f"{query if query else 'Local'} restaurant",
+                        "openingHours": "11:00 AM - 10:00 PM",
+                        "phoneNumber": "(555) 123-4567",
+                        "website": "https://www.example.com/restaurant",
+                        "description": f"A highly-rated {query if query else 'local'} dining spot in {location.title()} known for exceptional service and cuisine.",
+                        "popularDishes": ["Signature Dish 1", "Signature Dish 2", "Special Dessert"],
+                        "drivingTime": {
+                            "from": "City Center",
+                            "duration": "10 minutes",
+                            "distance": "1.5 miles"
+                        },
+                        "images": [
+                            "https://example.com/restaurant_interior.jpg",
+                            "https://example.com/restaurant_food1.jpg",
+                            "https://example.com/restaurant_food2.jpg"
+                        ],
+                        "reviews": [
+                            {
+                                "text": "Exceptional atmosphere and even better food. Highly recommended!",
+                                "rating": 5,
+                                "author": "Local Reviewer"
+                            },
+                            {
+                                "text": "Great service and delicious food. Will definitely come back.",
+                                "rating": 4,
+                                "author": "Tourist Reviewer"
+                            }
+                        ]
+                    },
+                    {
+                        "name": f"Popular Café in {location.title()}",
+                        "address": f"456 Oak St, {location.title()}",
+                        "rating": 4.5,
+                        "totalReviews": 982,
+                        "priceLevel": "$$",
+                        "category": "Café",
+                        "openingHours": "7:00 AM - 8:00 PM",
+                        "phoneNumber": "(555) 987-6543",
+                        "website": "https://www.example.com/cafe",
+                        "description": f"A charming café with great ambiance and variety of {query if query else 'local'} specialties.",
+                        "popularDishes": ["Breakfast Special", "House Coffee", "Signature Pastry"],
+                        "drivingTime": {
+                            "from": "City Center",
+                            "duration": "8 minutes",
+                            "distance": "1.2 miles"
+                        },
+                        "images": [
+                            "https://example.com/cafe_interior.jpg",
+                            "https://example.com/cafe_food1.jpg",
+                            "https://example.com/cafe_food2.jpg"
+                        ],
+                        "reviews": [
+                            {
+                                "text": "Perfect spot for breakfast or lunch. The coffee is excellent!",
+                                "rating": 5,
+                                "author": "Coffee Lover"
+                            },
+                            {
+                                "text": "Great place to work remotely. Good food and relaxed atmosphere.",
+                                "rating": 4,
+                                "author": "Digital Nomad"
+                            }
+                        ]
+                    }
+                ]
+        
+        # Attractions/Landmarks search
+        elif "attraction" in place_type or "landmark" in place_type:
+            if "paris" in location:
+                return [
+                    {
+                        "name": "Eiffel Tower",
+                        "address": "Champ de Mars, 5 Avenue Anatole France, 75007 Paris",
+                        "rating": 4.6,
+                        "totalReviews": 145782,
+                        "category": "Landmark",
+                        "openingHours": "9:00 AM - 11:45 PM",
+                        "phoneNumber": "+33 892 70 12 39",
+                        "website": "https://www.toureiffel.paris/en",
+                        "description": "Iconic symbol of Paris, offering panoramic views from multiple observation decks.",
+                        "entryFee": "From €17.10 for adults, depending on which floor you visit",
+                        "drivingTime": {
+                            "from": "Notre Dame",
+                            "duration": "15 minutes",
+                            "distance": "2.3 miles"
+                        },
+                        "images": [
+                            "https://example.com/eiffel_day.jpg",
+                            "https://example.com/eiffel_night.jpg",
+                            "https://example.com/eiffel_view.jpg"
+                        ],
+                        "reviews": [
+                            {
+                                "text": "Most beautiful at night when it sparkles on the hour. Worth waiting to see.",
+                                "rating": 5,
+                                "author": "Travel Enthusiast"
+                            },
+                            {
+                                "text": "Long lines but worth it for the view. Book tickets online in advance.",
+                                "rating": 4,
+                                "author": "Family Traveler"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "Louvre Museum",
+                        "address": "Rue de Rivoli, 75001 Paris",
+                        "rating": 4.7,
+                        "totalReviews": 124563,
+                        "category": "Museum",
+                        "openingHours": "9:00 AM - 6:00 PM, Closed Tuesdays",
+                        "phoneNumber": "+33 1 40 20 53 17",
+                        "website": "https://www.louvre.fr/en",
+                        "description": "World's largest art museum and home to thousands of works including the Mona Lisa.",
+                        "entryFee": "€17 for adults, free for under 18s",
+                        "drivingTime": {
+                            "from": "Eiffel Tower",
+                            "duration": "15 minutes",
+                            "distance": "2.5 miles"
+                        },
+                        "images": [
+                            "https://example.com/louvre_pyramid.jpg",
+                            "https://example.com/louvre_monalisa.jpg",
+                            "https://example.com/louvre_gallery.jpg"
+                        ],
+                        "reviews": [
+                            {
+                                "text": "Overwhelming in size. Plan at least half a day and focus on specific sections.",
+                                "rating": 5,
+                                "author": "Art Lover"
+                            },
+                            {
+                                "text": "The Mona Lisa is smaller than you'd expect and crowded. Many other amazing pieces to see.",
+                                "rating": 4,
+                                "author": "History Buff"
+                            }
+                        ]
+                    }
+                ]
+            else:
+                # Generic attraction results
+                return [
+                    {
+                        "name": f"Main Attraction in {location.title()}",
+                        "address": f"100 Tourist Avenue, {location.title()}",
+                        "rating": 4.7,
+                        "totalReviews": 15782,
+                        "category": "Landmark",
+                        "openingHours": "9:00 AM - 6:00 PM",
+                        "phoneNumber": "(555) 234-5678",
+                        "website": "https://www.example.com/attraction",
+                        "description": f"The most visited landmark in {location.title()}, known for its historical significance and beautiful architecture.",
+                        "entryFee": "$15 for adults, $10 for children",
+                        "drivingTime": {
+                            "from": "City Center",
+                            "duration": "12 minutes",
+                            "distance": "2.1 miles"
+                        },
+                        "images": [
+                            "https://example.com/attraction_exterior.jpg",
+                            "https://example.com/attraction_interior.jpg",
+                            "https://example.com/attraction_detail.jpg"
+                        ],
+                        "reviews": [
+                            {
+                                "text": "A must-visit when in the area. The architecture is stunning.",
+                                "rating": 5,
+                                "author": "History Enthusiast"
+                            },
+                            {
+                                "text": "Worth the entrance fee. Plan to spend at least 2 hours exploring.",
+                                "rating": 4,
+                                "author": "Travel Blogger"
+                            }
+                        ]
+                    },
+                    {
+                        "name": f"Popular Museum in {location.title()}",
+                        "address": f"200 Culture Street, {location.title()}",
+                        "rating": 4.6,
+                        "totalReviews": 8943,
+                        "category": "Museum",
+                        "openingHours": "10:00 AM - 5:00 PM, Closed Mondays",
+                        "phoneNumber": "(555) 876-5432",
+                        "website": "https://www.example.com/museum",
+                        "description": f"A fascinating collection showcasing the history and culture of {location.title()}.",
+                        "entryFee": "$12 for adults, free for children under 12",
+                        "drivingTime": {
+                            "from": "City Center",
+                            "duration": "10 minutes",
+                            "distance": "1.8 miles"
+                        },
+                        "images": [
+                            "https://example.com/museum_exterior.jpg",
+                            "https://example.com/museum_exhibit1.jpg",
+                            "https://example.com/museum_exhibit2.jpg"
+                        ],
+                        "reviews": [
+                            {
+                                "text": "Excellent curation and informative displays. The guided tour is worth it.",
+                                "rating": 5,
+                                "author": "Culture Enthusiast"
+                            },
+                            {
+                                "text": "Kid-friendly with interactive exhibits. Great for families.",
+                                "rating": 4,
+                                "author": "Family Traveler"
+                            }
+                        ]
+                    }
+                ]
+        
+        # Default generic places
+        else:
+            return [
+                {
+                    "name": f"{place_type.title() if place_type else 'Popular Place'} in {location.title()}",
+                    "address": f"123 Main Street, {location.title()}",
+                    "rating": 4.5,
+                    "totalReviews": 1000,
+                    "category": place_type.title() if place_type else "Point of Interest",
+                    "description": f"A popular {place_type if place_type else 'destination'} in {location.title()}.",
+                    "drivingTime": {
+                        "from": "City Center",
+                        "duration": "10 minutes",
+                        "distance": "1.5 miles"
+                    },
+                    "images": [
+                        "https://example.com/place_exterior.jpg",
+                        "https://example.com/place_interior.jpg"
+                    ],
+                    "reviews": [
+                        {
+                            "text": f"Great {place_type if place_type else 'place'} to visit in {location.title()}.",
+                            "rating": 4,
+                            "author": "Local Guide"
+                        }
+                    ]
+                },
+                {
+                    "name": f"Another {place_type.title() if place_type else 'Interesting Spot'} in {location.title()}",
+                    "address": f"456 Side Street, {location.title()}",
+                    "rating": 4.3,
+                    "totalReviews": 850,
+                    "category": place_type.title() if place_type else "Point of Interest",
+                    "description": f"Another highly rated {place_type if place_type else 'location'} worth visiting in {location.title()}.",
+                    "drivingTime": {
+                        "from": "City Center",
+                        "duration": "15 minutes",
+                        "distance": "2.2 miles"
+                    },
+                    "images": [
+                        "https://example.com/another_place_exterior.jpg",
+                        "https://example.com/another_place_detail.jpg"
+                    ],
+                    "reviews": [
+                        {
+                            "text": f"Hidden gem in {location.title()}. Less crowded than the main spots.",
+                            "rating": 5,
+                            "author": "Experienced Traveler"
+                        }
+                    ]
+                }
+            ]
