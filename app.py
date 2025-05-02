@@ -22,6 +22,10 @@ app = Flask(__name__)
 
 # Telegram Bot API token
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+if not TELEGRAM_TOKEN:
+    logger.error("TELEGRAM_BOT_TOKEN environment variable not set. Please set it in your .env file.")
+    TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"  # Placeholder for error handling
+    
 TELEGRAM_API = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}'
 
 # Import agent handler
@@ -68,6 +72,24 @@ def webhook():
     
     return jsonify({"status": "ok"})
 
+@app.route('/setup_webhook', methods=['GET'])
+def setup_webhook_route():
+    """Setup webhook manually with the provided ngrok URL"""
+    ngrok_url = request.args.get('ngrok_url')
+    
+    if not ngrok_url:
+        return "Please provide a ngrok_url parameter with your ngrok URL", 400
+    
+    result = setup_webhook(ngrok_url)
+    return jsonify({"status": "Webhook setup attempted", "result": result})
+
+@app.route('/check_webhook', methods=['GET'])
+def check_webhook():
+    """Check the current webhook status"""
+    url = f"{TELEGRAM_API}/getWebhookInfo"
+    response = requests.get(url)
+    return jsonify(response.json())
+
 def handle_message(chat_id, message_text, user_info):
     try:
         # Process message with agent
@@ -94,7 +116,10 @@ def send_message(chat_id, text):
         'text': text,
         'parse_mode': 'Markdown'
     }
-    requests.post(url, json=payload)
+    response = requests.post(url, json=payload)
+    if not response.ok:
+        logger.error(f"Failed to send message: {response.text}")
+    return response
 
 def send_chat_action(chat_id, action):
     """Send chat action like typing, upload_photo, etc."""
@@ -103,13 +128,22 @@ def send_chat_action(chat_id, action):
         'chat_id': chat_id,
         'action': action
     }
-    requests.post(url, json=payload)
+    response = requests.post(url, json=payload)
+    if not response.ok:
+        logger.error(f"Failed to send chat action: {response.text}")
+    return response
 
 def setup_webhook(ngrok_url):
     """Set up the Telegram webhook"""
     webhook_url = f"{ngrok_url}/webhook"
-    url = f"{TELEGRAM_API}/setWebhook?url={webhook_url}"
-    response = requests.get(url)
+    url = f"{TELEGRAM_API}/setWebhook"
+    payload = {
+        "url": webhook_url,
+        "allowed_updates": ["message"]
+    }
+    
+    # Use POST instead of GET for setting webhook
+    response = requests.post(url, json=payload)
     logger.info(f"Webhook set: {response.json()}")
     return response.json()
 
@@ -118,12 +152,16 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     
     # Start ngrok tunnel
-    public_url = ngrok.connect(port).public_url
-    logger.info(f"Public URL: {public_url}")
-    
-    # Setup webhook
-    webhook_response = setup_webhook(public_url)
-    logger.info(f"Webhook response: {webhook_response}")
+    try:
+        public_url = ngrok.connect(port).public_url
+        logger.info(f"Public URL: {public_url}")
+        
+        # Setup webhook
+        webhook_response = setup_webhook(public_url)
+        logger.info(f"Webhook response: {webhook_response}")
+    except Exception as e:
+        logger.error(f"Error setting up ngrok or webhook: {e}")
+        logger.info("You can manually set up the webhook using /setup_webhook route")
     
     # Start Flask app
     app.run(host='0.0.0.0', port=port)
