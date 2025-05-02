@@ -6,4 +6,3 @@ langchain==0.0.267
 langchain-openai==0.0.2
 pyngrok==7.0.0
 jsonschema==4.19.1
-rime-client==0.2.0
