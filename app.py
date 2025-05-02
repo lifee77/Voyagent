@@ -148,8 +148,8 @@ def setup_webhook(ngrok_url):
     return response.json()
 
 if __name__ == '__main__':
-    # Get port from environment or default to 5000
-    port = int(os.getenv('PORT', 5000))
+    # Get port from environment or default to 8080 (instead of 5000 to avoid AirPlay conflicts on macOS)
+    port = int(os.getenv('PORT', 8080))
     
     # Start ngrok tunnel
     try:
