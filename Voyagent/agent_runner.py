@@ -101,20 +101,23 @@ def update_thought_process(user_id, thought, replace=False):
     """Send thought process updates to Telegram."""
     if "send_message" in telegram_callbacks:
         try:
+            # Escape special Markdown characters to prevent parsing errors
+            escaped_thought = thought.replace("*", "\\*").replace("_", "\\_").replace("`", "\\`").replace("[", "\\[")
+            
             # Prefix the thought to make it clear it's the internal thought process
-            formatted_thought = f"🧠 *Thought Process*: {thought}"
+            formatted_thought = f"🧠 Thought Process: {escaped_thought}"
             
             # Get existing thought message ID for this user if it exists
             message_id = None
             if user_id in user_sessions and "thought_message_id" in user_sessions[user_id]:
                 message_id = user_sessions[user_id]["thought_message_id"]
                 
-            # Send via the callback
+            # Send via the callback - use HTML instead of Markdown for more reliable formatting
             result = telegram_callbacks["send_message"](
                 user_id, 
                 formatted_thought, 
                 message_id=message_id if replace else None,
-                parse_mode="Markdown"
+                parse_mode="HTML"  # Using HTML mode instead of Markdown for better reliability
             )
             
             # If this is a new thought message, store its ID
@@ -125,6 +128,17 @@ def update_thought_process(user_id, thought, replace=False):
             return result
         except Exception as e:
             logger.error(f"Error sending thought process to Telegram: {e}")
+            # If there was an error, try sending without parse mode
+            try:
+                result = telegram_callbacks["send_message"](
+                    user_id,
+                    f"🧠 Thought Process: {thought}",
+                    message_id=message_id if replace else None,
+                    parse_mode=""  # No parse mode as fallback
+                )
+                return result
+            except Exception as inner_e:
+                logger.error(f"Error sending fallback thought process: {inner_e}")
             return None
     return None
 
@@ -154,7 +168,7 @@ def process_message(message, user_info):
         logger.info(f"Preprocessed query type: {query_type}")
         update_thought_process(
             user_id, 
-            f"I've identified this as a *{query_type}* query.\n"
+            f"I've identified this as a {query_type} query.\n"
             f"Origin: {structured_query.get('origin', 'Not specified')}\n"
             f"Destination: {structured_query.get('destination', 'Not specified')}\n"
             f"Date: {structured_query.get('date_info', {}).get('start_date', 'Not specified')}",
@@ -351,23 +365,33 @@ def process_message(message, user_info):
             replace=True
         )
         
-        # Clear the thought process message after a delay
-        async def clear_thought_later():
-            await asyncio.sleep(20)  # Wait 20 seconds before clearing
-            if user_id in user_sessions and user_sessions[user_id].get("thought_message_id"):
-                try:
-                    if "send_message" in telegram_callbacks:
-                        telegram_callbacks["send_message"](
-                            user_id,
-                            "✓",
-                            message_id=user_sessions[user_id]["thought_message_id"],
-                            parse_mode="Markdown"
-                        )
-                except Exception as e:
-                    logger.error(f"Error clearing thought message: {e}")
-        
-        # Schedule the clearing task (this will need to be called properly in your app)
-        asyncio.create_task(clear_thought_later())
+        # Instead of using asyncio.create_task, we'll handle this differently
+        # since we're running in a thread without an event loop
+        try:
+            # Schedule the clear thought message for later using threading instead of asyncio
+            def clear_thought_later():
+                import time
+                time.sleep(20)  # Wait 20 seconds before clearing
+                if user_id in user_sessions and user_sessions[user_id].get("thought_message_id"):
+                    try:
+                        if "send_message" in telegram_callbacks:
+                            telegram_callbacks["send_message"](
+                                user_id,
+                                "✓",
+                                message_id=user_sessions[user_id]["thought_message_id"],
+                                parse_mode="Markdown"
+                            )
+                    except Exception as e:
+                        logger.error(f"Error clearing thought message: {e}")
+            
+            # Start a thread to clear the thought later
+            import threading
+            clear_thread = threading.Thread(target=clear_thought_later)
+            clear_thread.daemon = True  # This thread won't block program exit
+            clear_thread.start()
+            
+        except Exception as e:
+            logger.error(f"Error scheduling thought clearing: {e}")
         
         return final_response
     
