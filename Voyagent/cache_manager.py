@@ -64,7 +64,7 @@ def save_to_cache(user_id, query, result):
             _extract_poi_info(cache_data, tool_output)
         elif tool_name == "perplexity_search":
             _extract_destination_info(cache_data, query, tool_output)
-        elif tool_name == "rime_reservation":
+        elif tool_name == "vapi_reservation":  # Changed from rime_reservation to vapi_reservation
             _extract_reservation_info(cache_data, tool_input, tool_output)
     
     # Add this query to the history
@@ -199,14 +199,14 @@ def _extract_destination_info(cache_data, query, tool_output):
         logger.error(f"Error extracting destination info: {e}")
 
 def _extract_reservation_info(cache_data, tool_input, tool_output):
-    """Extract reservation information from Rime tool calls"""
+    """Extract reservation information from Vapi tool calls"""
     try:
         # Parse the tool input as JSON to get reservation details
         if isinstance(tool_input, str):
             try:
                 reservation_data = json.loads(tool_input)
             except json.JSONDecodeError:
-                logger.error("Invalid JSON in Rime tool input")
+                logger.error("Invalid JSON in Vapi tool input")
                 return
         else:
             reservation_data = tool_input
@@ -226,7 +226,7 @@ def _extract_reservation_info(cache_data, tool_input, tool_output):
             "time": reservation_details.get("time", ""),
             "num_people": reservation_details.get("num_people", ""),
             "details": reservation_details.get("special_requests", ""),
-            "confirmation": f"Made via Rime on {datetime.now().strftime('%Y-%m-%d')}"
+            "confirmation": f"Made via Vapi on {datetime.now().strftime('%Y-%m-%d')}"
         }
         
         # Extract confirmation number from the tool output
@@ -236,6 +236,13 @@ def _extract_reservation_info(cache_data, tool_input, tool_output):
                 if "confirmation" in line.lower() or "reference" in line.lower():
                     reservation_info["confirmation"] = line.strip()
                     break
+            
+            # Extract call summary if available
+            if "call summary:" in tool_output.lower():
+                summary_parts = tool_output.lower().split("call summary:")
+                if len(summary_parts) > 1:
+                    summary_text = summary_parts[1].strip()
+                    reservation_info["call_summary"] = summary_text
         
         # Add the reservation if it's not a duplicate
         if reservation_info not in cache_data["trip_details"]["reservations"]:

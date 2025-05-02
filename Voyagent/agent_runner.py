@@ -2,20 +2,15 @@ import os
 import json
 import logging
 from dotenv import load_dotenv
-from langchain.agents import AgentExecutor
-# Fix import paths for current langchain version
-from langchain.agents.format_scratchpad.openai_functions import format_to_openai_function_messages
-from langchain.agents.output_parsers.openai_functions import OpenAIFunctionsAgentOutputParser
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+# Import the correct modules
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langchain.tools.render import format_tool_to_openai_function
-from langchain.schema import SystemMessage, HumanMessage
 
 # Import tool implementations
 from Voyagent.tools.perplexity import PerplexitySearchTool
 from Voyagent.tools.apify import ApifyFlightTool, ApifyPOITool
 from Voyagent.tools.deepl import DeepLTranslateTool
-from Voyagent.tools.vapi import VapiReservationTool  # Changed from RimeReservationTool to VapiReservationTool
+from Voyagent.tools.vapi import VapiReservationTool
 from Voyagent.cache_manager import save_to_cache, get_from_cache
 
 # Load environment variables
@@ -23,25 +18,6 @@ load_dotenv()
 
 # Configure logging
 logger = logging.getLogger(__name__)
-
-# Initialize LLM
-llm = ChatOpenAI(
-    temperature=0,
-    model="gpt-4-turbo",
-    api_key=os.getenv("OPENAI_API_KEY")
-)
-
-# Initialize tools
-tools = [
-    PerplexitySearchTool(),
-    ApifyFlightTool(),
-    ApifyPOITool(),
-    DeepLTranslateTool(),
-    VapiReservationTool()  # Changed from RimeReservationTool to VapiReservationTool
-]
-
-# Format tools for OpenAI functions
-tool_functions = [format_tool_to_openai_function(t) for t in tools]
 
 # System prompt
 SYSTEM_PROMPT = """You are a helpful Trip Assistant bot that helps users plan their travel.
@@ -71,42 +47,27 @@ Be concise and helpful. Always provide clear, actionable travel advice.
 The current date is May 2, 2025.
 """
 
-# Create prompt template
-prompt = ChatPromptTemplate.from_messages([
-    SystemMessage(content=SYSTEM_PROMPT),
-    MessagesPlaceholder(variable_name="chat_history"),
-    HumanMessage(content="{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-# Set up the agent
-agent = (
-    {
-        "input": lambda x: x["input"],
-        "chat_history": lambda x: x.get("chat_history", []),
-        "agent_scratchpad": lambda x: format_to_openai_function_messages(
-            x["intermediate_steps"]
-        ),
-    }
-    | prompt
-    | llm.bind(functions=tool_functions)
-    | OpenAIFunctionsAgentOutputParser()
+# Initialize LLM with OpenAI API key
+llm = ChatOpenAI(
+    model="gpt-4-turbo",
+    temperature=0,
+    api_key=os.getenv("OPENAI_API_KEY")
 )
 
-# Create agent executor
-agent_executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    verbose=True,
-    handle_parsing_errors=True,
-    max_iterations=4
-)
+# Initialize tools
+tools = [
+    PerplexitySearchTool(),
+    ApifyFlightTool(),
+    ApifyPOITool(),
+    DeepLTranslateTool(),
+    VapiReservationTool()
+]
 
 # Dictionary to store user chat history and context
 user_sessions = {}
 
 def process_message(message, user_info):
-    """Process a message using the agent and store results in cache"""
+    """Process a message using direct tool calling and LLM for response generation"""
     user_id = user_info['id']
     
     # Initialize user session if it doesn't exist
@@ -116,23 +77,126 @@ def process_message(message, user_info):
             "trip_info": {}
         }
     
-    # Execute agent
+    # Execute conversation
     logger.info(f"Processing message from User {user_id}: {message}")
     try:
-        result = agent_executor.invoke({
-            "input": message,
-            "chat_history": user_sessions[user_id]["chat_history"]
-        })
+        # Step 1: Check if the message needs a specialized tool
+        tool_to_use = None
+        
+        # Check for flight queries
+        if any(keyword in message.lower() for keyword in ['flight', 'fly', 'ticket', 'travel to', 'from']):
+            tool_to_use = next((tool for tool in tools if tool.name == "apify_flight"), None)
+        
+        # Check for attraction queries
+        elif any(keyword in message.lower() for keyword in ['attraction', 'visit', 'thing to do', 'restaurant', 'activity']):
+            tool_to_use = next((tool for tool in tools if tool.name == "apify_poi"), None)
+        
+        # Check for translation requests
+        elif any(keyword in message.lower() for keyword in ['translate', 'language', 'spanish', 'french', 'german']):
+            tool_to_use = next((tool for tool in tools if tool.name == "deepl_translate"), None)
+            
+        # Check for reservation requests
+        elif any(keyword in message.lower() for keyword in ['book', 'reserve', 'reservation', 'call']):
+            tool_to_use = next((tool for tool in tools if tool.name == "vapi_reservation"), None)
+        
+        # General information queries default to Perplexity
+        else:
+            tool_to_use = next((tool for tool in tools if tool.name == "perplexity_search"), None)
+        
+        # Step 2: Use the appropriate tool or fallback to direct LLM
+        if tool_to_use:
+            logger.info(f"Using tool: {tool_to_use.name}")
+            
+            # For reservation tool, we need LLM help to structure the input
+            if tool_to_use.name == "vapi_reservation":
+                prompt = f"""Based on this request: "{message}"
+                
+                Create a JSON structure for making a reservation with these fields:
+                - service_type: "restaurant", "hotel", "attraction" or "travel_agent"
+                - service_name: Name of the business
+                - phone_number: Phone number with country code
+                - user_name: The name for the reservation
+                - reservation_details: Include date, time (if applicable), number of people, and any special requests
+                
+                Return ONLY the JSON without explanation:"""
+                
+                messages = [
+                    SystemMessage(content="You are a helpful assistant that creates structured JSON data."),
+                    HumanMessage(content=prompt)
+                ]
+                
+                structured_input = llm.invoke(messages).content
+                
+                try:
+                    # Extract JSON from the response
+                    json_start = structured_input.find("{")
+                    json_end = structured_input.rfind("}") + 1
+                    if json_start >= 0 and json_end > 0:
+                        json_str = structured_input[json_start:json_end]
+                        tool_response = tool_to_use._run(json_str)
+                    else:
+                        tool_response = "I couldn't process your reservation request. Could you provide more details about what you'd like to book?"
+                except Exception as e:
+                    logger.error(f"Error processing reservation: {e}")
+                    tool_response = "I encountered an error processing your reservation. Please try again with more details."
+            else:
+                # For other tools, pass the message directly
+                tool_response = tool_to_use._run(message)
+            
+            # Now use LLM to create a good response based on the tool output
+            response_prompt = f"""Based on this user question: "{message}"
+            
+            And this tool response:
+            "{tool_response}"
+            
+            Create a helpful, conversational response. Include the most relevant information from the tool output but make it sound natural and conversational. If the tool returned structured data, format it in a readable way."""
+            
+            response_messages = [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=response_prompt)
+            ]
+            
+            final_response = llm.invoke(response_messages).content
+            
+            # Create a structured result for cache_manager
+            structured_result = {
+                "output": final_response,
+                "intermediate_steps": [
+                    [{"tool": tool_to_use.name, "tool_input": message}, tool_response]
+                ]
+            }
+            
+        else:
+            # Fallback to direct LLM conversation
+            chat_history = user_sessions[user_id]["chat_history"]
+            
+            # Prepare messages for the LLM
+            messages = [SystemMessage(content=SYSTEM_PROMPT)]
+            
+            # Add the last few messages from chat history (if any)
+            if chat_history:
+                messages.extend(chat_history[-6:])  # Add up to 3 turns of conversation (6 messages)
+            
+            # Add the current user message
+            messages.append(HumanMessage(content=message))
+            
+            # Get response from LLM
+            final_response = llm.invoke(messages).content
+            
+            structured_result = {
+                "output": final_response,
+                "intermediate_steps": []
+            }
         
         # Update chat history
         user_sessions[user_id]["chat_history"].append(HumanMessage(content=message))
-        user_sessions[user_id]["chat_history"].append(SystemMessage(content=result["output"]))
+        user_sessions[user_id]["chat_history"].append(AIMessage(content=final_response))
         
         # Extract and cache important travel information
-        save_to_cache(user_id, message, result)
+        save_to_cache(user_id, message, structured_result)
         
-        return result["output"]
+        return final_response
     
     except Exception as e:
-        logger.error(f"Error in agent execution: {e}")
+        logger.error(f"Error in message processing: {e}")
         return "I encountered an error while processing your request. Please try again."
