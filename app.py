@@ -30,7 +30,7 @@ if not TELEGRAM_TOKEN:
 TELEGRAM_API = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}'
 
 # Define telegram message functions first before importing agent_runner
-def send_message(chat_id, text, parse_mode='Markdown'):
+def send_message(chat_id, text, parse_mode='HTML'):
     url = f"{TELEGRAM_API}/sendMessage"
     payload = {
         'chat_id': chat_id,
@@ -42,7 +42,7 @@ def send_message(chat_id, text, parse_mode='Markdown'):
         logger.error(f"Failed to send message: {response.text}")
     return response.json() if response.ok else None
 
-def send_telegram_message(user_id, text, message_id=None, parse_mode='Markdown'):
+def send_telegram_message(user_id, text, message_id=None, parse_mode='HTML'):
     """Send or edit a telegram message and return the response.
     This function is registered as a callback for the thought process updates."""
     url = f"{TELEGRAM_API}/{'editMessageText' if message_id else 'sendMessage'}"
@@ -120,6 +120,11 @@ def webhook():
                 threading.Thread(target=handle_summary_request, args=(chat_id, user_info)).start()
                 return jsonify({"status": "ok"})
             
+            elif message_text.startswith('/call'):
+                # Process call request in a separate thread
+                threading.Thread(target=handle_call_request, args=(chat_id, message_text, user_info)).start()
+                return jsonify({"status": "ok"})
+            
             else:
                 # Process regular message in a separate thread
                 threading.Thread(target=handle_message, args=(chat_id, message_text, user_info)).start()
@@ -149,10 +154,10 @@ def handle_message(chat_id, message_text, user_info):
     try:
         # Process message with agent
         response = process_message(message_text, user_info)
-        send_message(chat_id, response)
+        send_message(chat_id, response, parse_mode='HTML')
     except Exception as e:
         logger.error(f"Error processing message: {e}")
-        send_message(chat_id, "I encountered an error while processing your request. Please try again.")
+        send_message(chat_id, "I encountered an error while processing your request. Please try again.", parse_mode='HTML')
 
 def handle_summary_request(chat_id, user_info):
     try:
@@ -163,6 +168,29 @@ def handle_summary_request(chat_id, user_info):
     except Exception as e:
         logger.error(f"Error generating summary: {e}")
         send_message(chat_id, "I couldn't generate your trip summary. Please try asking a few questions about your destination first.")
+
+def handle_call_request(chat_id, message_text, user_info):
+    """Handle a call request from the user."""
+    try:
+        # Extract phone number from the command
+        parts = message_text.split()
+        if len(parts) < 2:
+            send_message(chat_id, "Please provide a phone number to call. Example: /call +14158667151")
+            return
+        
+        phone_number = parts[1]
+        
+        # Get the Vapi call tool
+        from Voyagent.tools.vapi import VapiCallTool
+        call_tool = VapiCallTool()
+        
+        # Make the call
+        response = call_tool._run(phone_number)
+        send_message(chat_id, response)
+        
+    except Exception as e:
+        logger.error(f"Error handling call request: {e}")
+        send_message(chat_id, "I encountered an error while processing your call request. Please try again.")
 
 def setup_webhook(ngrok_url):
     """Set up the Telegram webhook"""

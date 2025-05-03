@@ -3,6 +3,7 @@ import json
 import logging
 from pathlib import Path
 from datetime import datetime
+import re
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -106,37 +107,105 @@ def get_from_cache(user_id):
     cache_file = get_user_cache_file(user_id)
     
     if cache_file.exists():
-        with open(cache_file, 'r') as f:
-            return json.load(f)
+        try:
+            with open(cache_file, 'r') as f:
+                cache_data = json.load(f)
+                if not isinstance(cache_data, dict):
+                    logger.error(f"Invalid cache data format for user {user_id}")
+                    return None
+                return cache_data
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"Error reading cache file for user {user_id}: {e}")
+            return None
     
     return None
 
 def _extract_flight_info(cache_data, tool_output):
     """Extract flight information from tool output"""
     try:
-        # Parse the tool output as JSON if it's a string
-        if isinstance(tool_output, str):
-            flights_data = json.loads(tool_output)
-        else:
-            flights_data = tool_output
+        # First try to parse as JSON
+        try:
+            if isinstance(tool_output, str):
+                flights_data = json.loads(tool_output)
+            else:
+                flights_data = tool_output
+        except json.JSONDecodeError:
+            # If not JSON, try to extract from HTML formatted message
+            flights_data = []
+            lines = tool_output.split('\n')
+            current_flight = {}
+            
+            # Extract date from the first line if it contains a date
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', tool_output)
+            current_date = date_match.group(1) if date_match else ""
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('<b>Flight'):
+                    # New flight entry
+                    if current_flight:
+                        flights_data.append(current_flight)
+                    current_flight = {}
+                    if current_date:
+                        current_flight['date'] = current_date
+                elif line.startswith('•'):
+                    # Flight detail
+                    parts = line[1:].split(':', 1)
+                    if len(parts) == 2:
+                        key = parts[0].strip().lower()
+                        value = parts[1].strip()
+                        
+                        # Map HTML keys to flight info keys
+                        if key == 'airline':
+                            current_flight['airline'] = value
+                        elif key == 'flight':
+                            current_flight['flightNumber'] = value
+                        elif key == 'departure':
+                            # Extract airport code from departure
+                            airport_match = re.search(r'from\s+([A-Z]{3})', value)
+                            if airport_match:
+                                current_flight['departureAirport'] = airport_match.group(1)
+                            # Extract time
+                            time_match = re.search(r'(\d{1,2}:\d{2})', value)
+                            if time_match:
+                                current_flight['departureTime'] = time_match.group(1)
+                        elif key == 'arrival':
+                            # Extract airport code from arrival
+                            airport_match = re.search(r'at\s+([A-Z]{3})', value)
+                            if airport_match:
+                                current_flight['arrivalAirport'] = airport_match.group(1)
+                            # Extract time
+                            time_match = re.search(r'(\d{1,2}:\d{2})', value)
+                            if time_match:
+                                current_flight['arrivalTime'] = time_match.group(1)
+                        elif key == 'duration':
+                            current_flight['duration'] = value
+                        elif key == 'price':
+                            current_flight['price'] = value
+                        elif key == 'stops':
+                            current_flight['stops'] = int(value) if value.isdigit() else 0
+            
+            # Add the last flight if exists
+            if current_flight:
+                flights_data.append(current_flight)
         
-        # Check if we have a list of flights
+        # Process the extracted flight data
         if isinstance(flights_data, list):
             for flight in flights_data[:3]:  # Take top 3 flights
                 if isinstance(flight, dict):
                     flight_info = {
                         "from": flight.get("departureAirport", ""),
                         "to": flight.get("arrivalAirport", ""),
-                        "departure_date": flight.get("departureDate", ""),
-                        "arrival_date": flight.get("arrivalDate", ""),
+                        "departure_date": flight.get("date", ""),
+                        "arrival_date": flight.get("date", ""),  # Same day for now
                         "airline": flight.get("airline", ""),
                         "price": flight.get("price", ""),
                         "duration": flight.get("duration", "")
                     }
                     
                     # Add to destinations if not already there
-                    origin = flight.get("departureCity", "")
-                    destination = flight.get("arrivalCity", "")
+                    origin = flight.get("departureAirport", "")
+                    destination = flight.get("arrivalAirport", "")
                     
                     if origin and origin not in cache_data["trip_details"]["destinations"]:
                         cache_data["trip_details"]["destinations"].append(origin)

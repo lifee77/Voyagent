@@ -5,6 +5,7 @@ import time
 import requests
 from dotenv import load_dotenv
 from langchain.tools import BaseTool
+from typing import Dict, Any
 
 # Load environment variables
 load_dotenv()
@@ -277,3 +278,141 @@ class VapiReservationTool(BaseTool):
             
             Call summary: The service has confirmed availability and will hold a spot for you for 24 hours. They request that you call back directly to finalize your booking with payment details.
             """
+
+class VapiCallTool(BaseTool):
+    name = "vapi_call"
+    description = """
+    Makes a phone call using the Vapi API.
+    Input should be a phone number to call, optionally with a message to deliver.
+    Example: "+14158667151" or "call +14158667151 with message 'Hello, this is a test call'"
+    """
+    
+    def _run(self, query: str) -> str:
+        """Make a phone call using Vapi."""
+        logger.info(f"TOOL: vapi_call - Query: {query}")
+        
+        # Get API credentials
+        api_key = os.getenv("VAPI_API_KEY")
+        phone_number_id = os.getenv("VAPI_PHONE_NUMBER_ID")
+        
+        if not api_key or not phone_number_id:
+            logger.error("Vapi API credentials not found")
+            return "Error: Vapi API credentials not configured"
+        
+        # Extract phone number and message from query
+        phone_number = None
+        message = "Hello! This is a call from Voyagent."
+        
+        # Try to extract phone number and message
+        if "with message" in query:
+            parts = query.split("with message")
+            phone_number = parts[0].strip()
+            message = parts[1].strip().strip("'\"")
+        else:
+            phone_number = query.strip()
+        
+        # Validate phone number format
+        if not phone_number.startswith("+"):
+            phone_number = "+" + phone_number
+        
+        # Create headers with Authorization token
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        }
+        
+        # Create the data payload
+        data = {
+            'assistant': {
+                "firstMessage": message,
+                "model": {
+                    "provider": "google",
+                    "model": "gemini-2.0-flash",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": """You are Voyagent, an AI assistant making a call to make a reservation. 
+Your primary goal is to make a reservation for the customer. Be professional, friendly, and direct.
+Follow these steps:
+1. Introduce yourself as Voyagent
+2. State that you're calling to make a reservation
+3. Ask for availability and make the reservation
+4. Confirm all details (date, time, number of people, special requests)
+5. Get a confirmation number if available
+6. Thank them for their time
+
+If they ask about services or pricing, politely redirect the conversation back to making the reservation.
+Keep the conversation focused on completing the reservation."""
+                        }
+                    ]
+                },
+                "voice": "eva-rime-ai"  # Using a standard voice
+            },
+            'phoneNumberId': phone_number_id,
+            'customer': {
+                'number': phone_number,
+            },
+        }
+        
+        # API endpoint
+        url = 'https://api.vapi.ai/call/phone'
+        
+        try:
+            # Make the POST request to initiate the call
+            logger.info(f"Making API request to {url}")
+            response = requests.post(url, headers=headers, json=data)
+            
+            # Check if call was created successfully
+            if response.status_code == 201:
+                response_data = response.json()
+                call_id = response_data.get("id", "")
+                
+                if call_id:
+                    logger.info(f"Call created successfully with ID: {call_id}")
+                    
+                    # Monitor call status
+                    status_url = f"https://api.vapi.ai/call/{call_id}"
+                    max_wait_time = 180  # 3 minutes
+                    start_time = time.time()
+                    
+                    while time.time() - start_time < max_wait_time:
+                        status_response = requests.get(status_url, headers=headers)
+                        
+                        if status_response.status_code == 200:
+                            status_data = status_response.json()
+                            status = status_data.get("status", "unknown")
+                            
+                            if status in ["completed", "failed", "expired"]:
+                                if status == "completed" and "transcript" in status_data:
+                                    # Format the transcript for better readability
+                                    transcript = status_data["transcript"]
+                                    formatted_transcript = "📞 Call Transcript:\n\n"
+                                    
+                                    # Split transcript into lines and format each line
+                                    for line in transcript.split('\n'):
+                                        if line.strip():
+                                            # Add speaker labels and formatting
+                                            if line.startswith('Assistant:'):
+                                                formatted_transcript += f"🤖 {line}\n"
+                                            elif line.startswith('Customer:'):
+                                                formatted_transcript += f"👤 {line}\n"
+                                            else:
+                                                formatted_transcript += f"{line}\n"
+                                    
+                                    return formatted_transcript
+                                else:
+                                    return f"Call {status}. No transcript available."
+                            break
+                        
+                        time.sleep(10)
+                    
+                    return "Call initiated successfully. Status monitoring timed out."
+                else:
+                    return "Error: No call ID received from Vapi API"
+            else:
+                logger.error(f"Failed to create call: {response.text}")
+                return f"Error: Failed to create call. Status code: {response.status_code}"
+                
+        except Exception as e:
+            logger.error(f"Error making Vapi call: {e}")
+            return f"Error making call: {str(e)}"

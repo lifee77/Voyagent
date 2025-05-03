@@ -12,7 +12,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI  # Changed to use Gemi
 from Voyagent.tools.perplexity import PerplexitySearchTool
 from Voyagent.tools.apify import ApifyFlightTool, ApifyPOITool, ApifyGoogleMapsTool
 from Voyagent.tools.deepl import DeepLTranslateTool
-from Voyagent.tools.vapi import VapiReservationTool
+from Voyagent.tools.vapi import VapiReservationTool, VapiCallTool
 from Voyagent.tools.gemini_preprocessor import GeminiPreprocessor
 from Voyagent.cache_manager import save_to_cache, get_from_cache
 
@@ -76,7 +76,8 @@ tools = [
     ApifyPOITool(),
     ApifyGoogleMapsTool(),
     DeepLTranslateTool(),
-    VapiReservationTool()
+    VapiReservationTool(),
+    VapiCallTool()
 ]
 
 # Dictionary to store user chat history and context
@@ -159,6 +160,13 @@ def process_message(message, user_info):
     try:
         # Start thought process display
         update_thought_process(user_id, "Starting to process your query...", replace=True)
+        
+        # Check for call keywords
+        if "call" in message.lower() and any(char.isdigit() for char in message):
+            update_thought_process(user_id, "Detected a request to make a phone call...", replace=True)
+            call_tool = VapiCallTool()
+            response = call_tool._run(message)
+            return response
         
         # Step 1: Preprocess the query with Gemini
         update_thought_process(user_id, "Analyzing your query with Gemini to understand your travel needs...", replace=True)
