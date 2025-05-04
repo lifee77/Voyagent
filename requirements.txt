@@ -8,3 +8,4 @@ langchain-google-genai>=0.0.2
 google-generativeai>=0.3.0
 pyngrok>=7.0.0
 jsonschema>=4.19.1
+pydantic==1.10.8  # Pin to a version that doesn't require type annotations for overridden fields
